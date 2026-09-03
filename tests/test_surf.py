@@ -6,10 +6,6 @@ from pathlib import Path
 
 import pytest
 
-# Adjust import path since surf.py is a top-level module
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from surf import (
     __version__,
     __version_tag__,

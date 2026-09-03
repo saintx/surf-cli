@@ -13,7 +13,7 @@ requires-python = ">=3.12"
 surf = "surf:main"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["surf.py"]
+packages = ["src/surf"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
