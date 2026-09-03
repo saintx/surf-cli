@@ -14,9 +14,11 @@ surf = "surf:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/surf"]
+exclude = ["src/surf/test_*.py"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["src/surf"]
+python_files = ["test_*.py"]
 
 [dependency-groups]
 dev = [
