@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "surf-cli"
+version = "0.2.2"
+description = "Extract markdown sections by heading with Obsidian link support"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[project.scripts]
+surf = "surf:main"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["surf.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.uv]
+default-groups = ["dev"]
