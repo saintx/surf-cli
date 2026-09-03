@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 
 [project.scripts]
-surf = "surf:main"
+surf = "surf.orchestrator:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/surf"]
@@ -22,8 +22,49 @@ python_files = ["test_*.py"]
 
 [dependency-groups]
 dev = [
+    "autoflake>=2.3.1",
+    "black>=25.1.0",
+    "import-linter>=2.0",
+    "isort>=6.0.1",
+    "pyright>=1.1.407",
     "pytest>=9.1.1",
 ]
 
 [tool.uv]
 default-groups = ["dev"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pyright]
+pythonVersion = "3.12"
+reportMissingParameterType = "warning"
+reportUnusedImport = "error"
+typeCheckingMode = "basic"
+venv = ".venv"
+venvPath = "."
+
+[tool.importlinter]
+root_package = "surf"
+
+[[tool.importlinter.contracts]]
+name = "Models cannot import higher layers"
+source_modules = ["surf.models"]
+forbidden_modules = ["surf.logic", "surf.adapters", "surf.orchestrator"]
+type = "forbidden"
+
+[[tool.importlinter.contracts]]
+name = "Logic cannot import adapters or orchestrator"
+source_modules = ["surf.logic"]
+forbidden_modules = ["surf.adapters", "surf.orchestrator"]
+type = "forbidden"
+
+[[tool.importlinter.contracts]]
+name = "Adapters cannot import logic or orchestrator"
+source_modules = ["surf.adapters"]
+forbidden_modules = ["surf.logic", "surf.orchestrator"]
+type = "forbidden"
