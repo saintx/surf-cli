@@ -13,7 +13,7 @@
       in {
         packages.default = pkgs.python312Packages.buildPythonApplication {
           pname = "surf";
-          version = "0.2.2";
+          version = "0.3.0";
           src = ./.;
           pyproject = true;
 
