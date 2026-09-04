@@ -146,3 +146,11 @@ def format_heading_list(lines: Sequence[str]) -> str:
         indent = "  " * (int(record.level) - 1)
         out.append(f"{indent}- {record.text}")
     return "\n".join(out)
+
+
+def format_file_index(split: FrontmatterSplit) -> str:
+    frontmatter = "\n".join(split.frontmatter) if split.frontmatter is not None else ""
+    headings = format_heading_list(split.body)
+    if frontmatter and headings:
+        return f"{frontmatter}\n\n{headings}"
+    return frontmatter or headings

@@ -76,16 +76,25 @@ def test_extract_details(sample_file: Path) -> None:
 
 
 def test_no_heading_does_not_dump(sample_file: Path) -> None:
-    result = run_argv([str(sample_file)])
-    assert isinstance(result, CliFailure)
-    assert "no heading specified" in result.message
-    assert "Introduction" not in result.message
+    output = rendered([str(sample_file)])
+    assert "title: Test Document" in output
+    assert "- Introduction" in output
+    assert "Detail content" not in output
+    assert "intro" not in output.splitlines()
 
 
 def test_list_headings(sample_file: Path) -> None:
     output = rendered(["--list", str(sample_file)])
     assert "- Introduction" in output
     assert "  - Details" in output
+    assert "title:" not in output
+
+
+def test_frontmatter_only(sample_file: Path) -> None:
+    output = rendered(["-f", str(sample_file)])
+    assert "title: Test Document" in output
+    assert "- Introduction" not in output
+    assert "Detail content" not in output
 
 
 def test_nested_path(nested_file: Path) -> None:

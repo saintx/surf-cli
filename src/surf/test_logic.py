@@ -7,6 +7,7 @@ import textwrap
 
 from surf.logic import (
     extract_section,
+    format_file_index,
     format_heading_list,
     parse_heading_path,
     parse_headings,
@@ -262,3 +263,39 @@ def test_format_heading_list() -> None:
     text = format_heading_list(split.body)
     assert "- Introduction" in text
     assert "  - Details" in text
+
+
+def test_format_file_index_yaml_and_headings() -> None:
+    split = split_frontmatter(SAMPLE_MD.splitlines())
+    text = format_file_index(split)
+    assert "title: Test Document" in text
+    assert "- Introduction" in text
+    assert "  - Details" in text
+    assert "Detail content" not in text
+    assert "Some introductory text" not in text
+
+
+def test_format_file_index_yaml_only() -> None:
+    split = split_frontmatter(
+        textwrap.dedent("""\
+            ---
+            title: YAML Only
+            ---
+            Body without headings.
+        """).splitlines()
+    )
+    text = format_file_index(split)
+    assert "title: YAML Only" in text
+    assert "Body without headings" not in text
+    assert "- " not in text
+
+
+def test_format_file_index_headings_only() -> None:
+    split = split_frontmatter(SAMPLE_NO_FM.splitlines())
+    text = format_file_index(split)
+    assert split.frontmatter is None
+    assert "- Top" in text
+    assert "  - Sub" in text
+    assert "Hello world" not in text
+    assert "Sub content" not in text
+    assert "title:" not in text

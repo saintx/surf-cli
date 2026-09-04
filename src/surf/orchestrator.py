@@ -10,6 +10,7 @@ from surf import __version_tag__
 from surf.adapters import read_document, resolve_file, write_output
 from surf.logic import (
     extract_section,
+    format_file_index,
     format_heading_list,
     parse_heading_path,
     parse_link,
@@ -120,10 +121,7 @@ def run(options: CliOptions) -> CliResult:
         return CliSuccess(body="\n".join(split.frontmatter))
 
     if options.heading_path is None:
-        return CliFailure(
-            message="no heading specified; pass a heading or use --list.",
-            exit_code=2,
-        )
+        return CliSuccess(body=format_file_index(split))
 
     extracted = extract_section(
         split.body,
