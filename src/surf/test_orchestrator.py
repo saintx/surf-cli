@@ -10,6 +10,7 @@ import pytest
 from surf import __version__
 from surf.models import CliFailure
 from surf.orchestrator import build_parser, main, run_argv
+from surf.test_adapters import write_outline_pdf
 
 SAMPLE = """---
 title: Test Document
@@ -504,3 +505,108 @@ def test_tex_no_heading_drops_begin_abstract_line(tmp_path: Path) -> None:
     assert r"\begin{abstract}" not in output
     assert "abstract body" in output
     assert r"\end{abstract}" in output
+
+
+def test_pdf_list_headings(tmp_path: Path) -> None:
+    path = tmp_path / "doc.pdf"
+    write_outline_pdf(
+        path,
+        page_count=2,
+        outline=(("Parent", 0, (("Child", 1, ()),)),),
+    )
+    output = rendered(["--list", str(path)])
+    assert output.splitlines() == ["- Parent", "  - Child"]
+
+
+def test_pdf_no_heading_lists_outline(tmp_path: Path) -> None:
+    path = tmp_path / "doc.pdf"
+    write_outline_pdf(
+        path,
+        page_count=2,
+        outline=(("Parent", 0, (("Child", 1, ()),)),),
+    )
+    output = rendered([str(path)])
+    assert output.splitlines() == ["- Parent", "  - Child"]
+    assert "Traceback" not in output
+
+
+def test_pdf_frontmatter_only_empty(tmp_path: Path) -> None:
+    path = tmp_path / "doc.pdf"
+    write_outline_pdf(path, page_count=1, outline=(("Parent", 0, ()),))
+    output = rendered(["-f", str(path)])
+    assert output == ""
+
+
+def test_pdf_garbage_is_cli_failure(tmp_path: Path) -> None:
+    path = tmp_path / "garbage.pdf"
+    path.write_bytes(b"not a pdf")
+    result = run_argv(["--list", str(path)])
+    assert isinstance(result, CliFailure)
+    assert result.exit_code == 1
+    assert "Traceback" not in result.message
+    assert "UnicodeDecodeError" not in result.message
+
+
+def _nested_pdf(tmp_path: Path) -> Path:
+    path = tmp_path / "nested.pdf"
+    write_outline_pdf(
+        path,
+        page_count=4,
+        outline=(
+            ("Parent", 0, (("Child", 1, ()),)),
+            ("Other", 2, (("Child", 3, ()),)),
+        ),
+        page_texts=("parent-page", "first-child", "other-page", "other-child"),
+    )
+    return path
+
+
+def test_pdf_nested_path(tmp_path: Path) -> None:
+    path = _nested_pdf(tmp_path)
+    output = rendered([f"[[{path}#Parent#Child]]"])
+    assert "first-child" in output
+    assert "other-child" not in output
+    assert "parent-page" not in output
+
+
+def test_pdf_missing_outline_title(tmp_path: Path) -> None:
+    path = _nested_pdf(tmp_path)
+    result = run_argv([str(path), "NoSuch"])
+    assert isinstance(result, CliFailure)
+    assert result.exit_code == 1
+    assert result.message == f'heading "NoSuch" not found in {path}.'
+
+
+def test_pdf_no_heading_does_not_change_body(tmp_path: Path) -> None:
+    path = _nested_pdf(tmp_path)
+    default = rendered([str(path), "Parent"])
+    no_heading = rendered(["--no-heading", str(path), "Parent"])
+    assert default == no_heading
+    assert "parent-page" in default
+
+
+def test_pdf_full_equals_default_extract(tmp_path: Path) -> None:
+    path = _nested_pdf(tmp_path)
+    assert rendered(["--full", str(path), "Parent"]) == rendered([str(path), "Parent"])
+
+
+def test_pdf_level_7_matches_native_outline(tmp_path: Path) -> None:
+    path = tmp_path / "deep.pdf"
+    deep = ("Deep", 0, ())
+    level6 = ("L6", 0, (deep,))
+    level5 = ("L5", 0, (level6,))
+    level4 = ("L4", 0, (level5,))
+    level3 = ("L3", 0, (level4,))
+    level2 = ("L2", 0, (level3,))
+    level1 = ("L1", 0, (level2,))
+    write_outline_pdf(
+        path,
+        page_count=1,
+        outline=(level1,),
+        page_texts=("deep-page",),
+    )
+    output = rendered(["--level", "7", str(path), "Deep"])
+    assert "deep-page" in output
+    result = run_argv(["--level", "1", str(path), "Deep"])
+    assert isinstance(result, CliFailure)
+    assert result.exit_code == 1

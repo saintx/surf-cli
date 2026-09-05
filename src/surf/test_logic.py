@@ -6,10 +6,12 @@ from __future__ import annotations
 import textwrap
 
 from surf.logic import (
+    extract_outline_section,
     extract_section,
     format_empty_index,
     format_file_index,
     format_heading_list,
+    format_outline_list,
     parse_heading_path,
     parse_headings,
     parse_link,
@@ -24,7 +26,10 @@ from surf.models import (
     HeadingPathRemainder,
     HeadingText,
     LineCount,
+    OutlineRecord,
+    PageIndex,
     ParsedLink,
+    PdfDocument,
 )
 
 SAMPLE_MD = textwrap.dedent("""\
@@ -281,6 +286,124 @@ def test_format_heading_list_level_is_max_depth() -> None:
     assert "  - Another Section" in lines
     assert "- Conclusion" in lines
     assert "Sub-details" not in text
+
+
+def test_format_outline_list() -> None:
+    outline = (
+        OutlineRecord(
+            level=HeadingLevel(1),
+            title=HeadingText("Parent"),
+            page_index=PageIndex(0),
+            top=None,
+        ),
+        OutlineRecord(
+            level=HeadingLevel(2),
+            title=HeadingText("Child"),
+            page_index=PageIndex(1),
+            top=None,
+        ),
+    )
+    text = format_outline_list(outline)
+    assert text.splitlines() == ["- Parent", "  - Child"]
+
+
+def orec(
+    level: int,
+    title: str,
+    page: int | None,
+    top: float | None = None,
+) -> OutlineRecord:
+    return OutlineRecord(
+        level=HeadingLevel(level),
+        title=HeadingText(title),
+        page_index=None if page is None else PageIndex(page),
+        top=top,
+    )
+
+
+NESTED_OUTLINE = PdfDocument(
+    outline=(
+        orec(1, "Parent", 0),
+        orec(2, "Child", 1),
+        orec(1, "Other", 2),
+        orec(2, "Child", 3),
+    ),
+    pages=("parent-page", "first-child", "other-page", "other-child"),
+)
+
+
+def test_extract_outline_nested_path_selects_child_of_parent() -> None:
+    result = extract_outline_section(NESTED_OUTLINE, hp("Parent#Child"))
+    assert result is not None
+    assert int(result.level) == 2
+    assert "\n".join(result.lines) == "first-child"
+    later = extract_outline_section(NESTED_OUTLINE, hp("Other#Child"))
+    assert later is not None
+    assert "\n".join(later.lines) == "other-child"
+
+
+def test_extract_outline_dest_to_next_dest_and_last_item() -> None:
+    parent = extract_outline_section(NESTED_OUTLINE, hp("Parent"))
+    assert parent is not None
+    assert "\n".join(parent.lines) == "parent-page"
+    last = extract_outline_section(NESTED_OUTLINE, hp("Other#Child"))
+    assert last is not None
+    assert "\n".join(last.lines) == "other-child"
+
+
+def test_extract_outline_same_page_earlier_item_empty() -> None:
+    document = PdfDocument(
+        outline=(orec(1, "Alpha", 0), orec(1, "Beta", 0)),
+        pages=("shared-page",),
+    )
+    earlier = extract_outline_section(document, hp("Alpha"))
+    assert earlier is not None
+    assert earlier.lines == ()
+    later = extract_outline_section(document, hp("Beta"))
+    assert later is not None
+    assert "\n".join(later.lines) == "shared-page"
+
+
+def test_extract_outline_level_filter_native_above_six() -> None:
+    document = PdfDocument(
+        outline=(orec(7, "Deep", 0),),
+        pages=("deep-page",),
+    )
+    found = extract_outline_section(document, hp("Deep"), level_filter=HeadingLevel(7))
+    assert found is not None
+    assert int(found.level) == 7
+    assert "\n".join(found.lines) == "deep-page"
+    assert extract_outline_section(document, hp("Deep"), level_filter=HeadingLevel(1)) is None
+
+
+def test_extract_outline_case_insensitive_strip() -> None:
+    document = PdfDocument(
+        outline=(orec(1, "  Mixed Case  ", 0),),
+        pages=("mixed-page",),
+    )
+    result = extract_outline_section(document, hp("mixed case"))
+    assert result is not None
+    assert "\n".join(result.lines) == "mixed-page"
+
+
+def test_extract_outline_unknown_title_returns_none() -> None:
+    assert extract_outline_section(NESTED_OUTLINE, hp("Missing")) is None
+
+
+def test_extract_outline_empty_outline_returns_none() -> None:
+    document = PdfDocument(outline=(), pages=("page",))
+    assert extract_outline_section(document, hp("Parent")) is None
+
+
+def test_extract_outline_missing_dest_is_empty_found() -> None:
+    document = PdfDocument(
+        outline=(orec(1, "Ghost", None),),
+        pages=("page",),
+    )
+    result = extract_outline_section(document, hp("Ghost"))
+    assert result is not None
+    assert int(result.level) == 1
+    assert result.lines == ()
 
 
 def test_format_file_index_yaml_and_headings() -> None:

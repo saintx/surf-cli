@@ -18,6 +18,8 @@ TeX `\input` and `\include` of `.tex` files are expanded relative to the file yo
 
 If the file has no headings, surf prints that it has no structural index, with the file's line and byte counts. It does not dump the body.
 
+Python 3.12+. pypdf is the runtime dependency for PDF outline addressing.
+
 ## Install
 
 Packaged as a nix flake. The `surf` CLI is installed globally via nix profile.

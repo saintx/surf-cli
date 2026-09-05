@@ -24,7 +24,9 @@ from surf.models import (
     HeadingText,
     LineCount,
     LineIndex,
+    OutlineRecord,
     ParsedLink,
+    PdfDocument,
     RenderedBody,
     ScanBuffer,
     TexCommand,
@@ -400,6 +402,77 @@ def extract_section(
     )
 
 
+def extract_outline_section(
+    document: PdfDocument,
+    heading_path: HeadingPath,
+    *,
+    level_filter: HeadingLevel | None = None,
+) -> ExtractedSection | None:
+    """Extract dest-to-next-dest. Nested containment uses outline indices."""
+    outline = document.outline
+    segments = heading_path.segments
+    if not segments:
+        return None
+
+    def containment_end(start_idx: int, start_level: HeadingLevel) -> int:
+        for j in range(start_idx + 1, len(outline)):
+            if outline[j].level <= start_level:
+                return j
+        return len(outline)
+
+    bound_start = -1
+    bound_end = len(outline)
+    prev_level = HeadingLevel(0)
+    match_idx: int | None = None
+    match_level: HeadingLevel | None = None
+
+    for i, segment in enumerate(segments):
+        target = str(segment).lower()
+        is_last = i == len(segments) - 1
+        found: OutlineRecord | None = None
+        found_idx: int | None = None
+        for j, record in enumerate(outline):
+            if j <= bound_start or j >= bound_end:
+                continue
+            if i > 0 and record.level <= prev_level:
+                continue
+            if str(record.title).lower().strip() != target:
+                continue
+            if is_last and level_filter is not None and record.level != level_filter:
+                continue
+            found = record
+            found_idx = j
+            break
+        if found is None or found_idx is None:
+            return None
+        match_level = found.level
+        match_idx = found_idx
+        bound_start = match_idx
+        prev_level = match_level
+        bound_end = containment_end(match_idx, match_level)
+
+    if match_idx is None or match_level is None:
+        return None
+
+    start_page = outline[match_idx].page_index
+    if start_page is None:
+        return ExtractedSection(
+            level=match_level, lines=(), heading_line_count=HeadingLineCount(0)
+        )
+
+    next_idx = match_idx + 1
+    end_page = outline[next_idx].page_index if next_idx < len(outline) else None
+    if end_page is None:
+        page_slice = document.pages[int(start_page) :]
+    else:
+        page_slice = document.pages[int(start_page) : int(end_page)]
+    return ExtractedSection(
+        level=match_level,
+        lines=tuple(page_slice),
+        heading_line_count=HeadingLineCount(0),
+    )
+
+
 def format_empty_index(*, line_count: LineCount, byte_count: ByteCount) -> RenderedBody:
     return RenderedBody(f"no structural index\nlines: {int(line_count)}\nbytes: {int(byte_count)}")
 
@@ -418,6 +491,22 @@ def format_heading_list(
     for record in records:
         indent = "  " * (int(record.level) - 1)
         out.append(f"{indent}- {record.text}")
+    return RenderedBody("\n".join(out))
+
+
+def format_outline_list(
+    outline: Sequence[OutlineRecord],
+    *,
+    level_filter: HeadingLevel | None = None,
+) -> RenderedBody:
+    """List outline items. level_filter is a maximum rank (1 through N)."""
+    records = outline
+    if level_filter is not None:
+        records = tuple(record for record in records if record.level <= level_filter)
+    out: list[str] = []
+    for record in records:
+        indent = "  " * (int(record.level) - 1)
+        out.append(f"{indent}- {record.title}")
     return RenderedBody("\n".join(out))
 
 

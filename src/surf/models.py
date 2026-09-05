@@ -11,6 +11,7 @@ HeadingText = NewType("HeadingText", str)
 FileRef = NewType("FileRef", str)
 HeadingLevel = NewType("HeadingLevel", int)
 LineIndex = NewType("LineIndex", int)
+PageIndex = NewType("PageIndex", int)
 ScanBuffer = NewType("ScanBuffer", str)
 CharOffset = NewType("CharOffset", int)
 Delimiter = NewType("Delimiter", str)
@@ -64,6 +65,20 @@ class ClosedSpan:
     buffer: ScanBuffer
     end: CharOffset
     last_line: LineIndex
+
+
+@dataclass(frozen=True, slots=True)
+class OutlineRecord:
+    level: HeadingLevel
+    title: HeadingText
+    page_index: PageIndex | None
+    top: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class PdfDocument:
+    outline: tuple[OutlineRecord, ...]
+    pages: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)

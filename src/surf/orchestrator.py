@@ -10,17 +10,21 @@ from pathlib import Path
 
 from surf import __version__
 from surf.adapters import (
+    PdfIngestError,
     document_byte_count,
     read_document,
+    read_pdf,
     resolve_file,
     resolve_tex_include,
     write_output,
 )
 from surf.logic import (
+    extract_outline_section,
     extract_section,
     format_empty_index,
     format_file_index,
     format_heading_list,
+    format_outline_list,
     parse_heading_path,
     parse_headings,
     parse_link,
@@ -51,7 +55,7 @@ type CliResult = CliSuccess | CliFailure
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="surf",
-        description="Extract markdown or TeX sections by heading with Obsidian link support.",
+        description="Extract markdown, TeX, or PDF outline sections with Obsidian link support.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -128,6 +132,35 @@ def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
     )
 
 
+def _run_pdf(path: Path, options: CliOptions) -> CliResult:
+    try:
+        document = read_pdf(path)
+    except PdfIngestError as exc:
+        return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(1))
+    if options.list_headings:
+        return CliSuccess(
+            body=format_outline_list(document.outline, level_filter=options.level_filter)
+        )
+    if options.frontmatter_only:
+        return CliSuccess(body=RenderedBody(""))
+    if options.heading_path is None:
+        return CliSuccess(
+            body=format_outline_list(document.outline, level_filter=options.level_filter)
+        )
+    extracted = extract_outline_section(
+        document,
+        options.heading_path,
+        level_filter=options.level_filter,
+    )
+    if extracted is None:
+        remainder = "#".join(str(seg) for seg in options.heading_path.segments)
+        return CliFailure(
+            message=ErrorMessage(f'heading "{remainder}" not found in {path}.'),
+            exit_code=ExitCode(1),
+        )
+    return CliSuccess(body=RenderedBody("\n".join(extracted.lines).rstrip()))
+
+
 def run(options: CliOptions) -> CliResult:
     if options.file_ref is None:
         return CliFailure(
@@ -138,7 +171,15 @@ def run(options: CliOptions) -> CliResult:
         path = resolve_file(options.file_ref)
     except FileNotFoundError as exc:
         return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(2))
-    lines = read_document(path)
+    if path.suffix.lower() == ".pdf":
+        return _run_pdf(path, options)
+    try:
+        lines = read_document(path)
+    except UnicodeDecodeError:
+        return CliFailure(
+            message=ErrorMessage(f"could not decode {path} as UTF-8."),
+            exit_code=ExitCode(1),
+        )
     line_count = LineCount(len(lines))
     byte_count = document_byte_count(path)
     if path.suffix.lower() == ".tex":

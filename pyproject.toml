@@ -10,6 +10,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Alexander R. Saint Croix", email = "alex@saintx.us" }]
 requires-python = ">=3.12"
+dependencies = ["pypdf>=5.0.0"]
 
 [project.urls]
 Homepage = "https://github.com/saintx/surf-cli"
@@ -58,6 +59,7 @@ venvPath = "."
 
 [tool.importlinter]
 root_package = "surf"
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Models cannot import higher layers"
@@ -76,3 +78,10 @@ name = "Adapters cannot import logic or orchestrator"
 source_modules = ["surf.adapters"]
 forbidden_modules = ["surf.logic", "surf.orchestrator"]
 type = "forbidden"
+
+[[tool.importlinter.contracts]]
+name = "Models, logic, and orchestrator cannot import pypdf"
+source_modules = ["surf.models", "surf.logic", "surf.orchestrator"]
+forbidden_modules = ["pypdf"]
+type = "forbidden"
+allow_indirect_imports = true

@@ -21,7 +21,7 @@
             hatchling
           ];
 
-          dependencies = [];
+          dependencies = with pkgs.python312Packages; [ pypdf ];
 
           doCheck = false;
         };

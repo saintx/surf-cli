@@ -3,15 +3,28 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from pathlib import Path
+
+from pypdf import PdfReader
+from pypdf.generic import Destination
 
 from surf.models import (
     ByteCount,
     DocumentLines,
     FileRef,
+    HeadingLevel,
+    HeadingText,
+    OutlineRecord,
+    PageIndex,
+    PdfDocument,
     RenderedBody,
     TexIncludeRelPath,
 )
+
+
+class PdfIngestError(Exception):
+    """PDF bytes could not be read as a document outline."""
 
 
 def resolve_file(file_ref: FileRef) -> Path:
@@ -46,3 +59,59 @@ def write_output(text: RenderedBody, dest: FileRef | None) -> None:
         print(text)
         return
     Path(str(dest)).write_text(payload, encoding="utf-8")
+
+
+def _optional_float(value: object) -> float | None:
+    match value:
+        case None:
+            return None
+        case int() | float() | str():
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+        case _:
+            try:
+                return float(str(value))
+            except (TypeError, ValueError):
+                return None
+
+
+def _outline_record(reader: PdfReader, item: Destination, *, level: int) -> OutlineRecord:
+    title = item.title
+    page_number = reader.get_destination_page_number(item)
+    page_index = PageIndex(page_number) if page_number is not None else None
+    return OutlineRecord(
+        level=HeadingLevel(level),
+        title=HeadingText("" if title is None else str(title)),
+        page_index=page_index,
+        top=_optional_float(item.top),
+    )
+
+
+def _walk_outline(
+    reader: PdfReader,
+    items: Iterable[object],
+    *,
+    level: int,
+) -> Iterator[OutlineRecord]:
+    for item in items:
+        match item:
+            case list():
+                yield from _walk_outline(reader, item, level=level + 1)
+            case Destination():
+                yield _outline_record(reader, item, level=level)
+
+
+def read_pdf(path: Path) -> PdfDocument:
+    try:
+        reader = PdfReader(path)
+        if reader.is_encrypted:
+            raise PdfIngestError(f"could not read PDF: {path}")
+        outline = tuple(_walk_outline(reader, reader.outline, level=1))
+        pages = tuple((page.extract_text() or "") for page in reader.pages)
+        return PdfDocument(outline=outline, pages=pages)
+    except PdfIngestError:
+        raise
+    except Exception as exc:
+        raise PdfIngestError(f"could not read PDF: {path}") from exc
