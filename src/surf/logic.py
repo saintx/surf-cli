@@ -20,6 +20,20 @@ from surf.models import (
 )
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
+_TEX_LEVEL = {
+    "part": 1,
+    "chapter": 2,
+    "section": 3,
+    "subsection": 4,
+    "subsubsection": 5,
+    "paragraph": 6,
+    "subparagraph": 7,
+}
+_TEX_COMMAND_RE = re.compile(
+    r"^\s*\\("
+    r"subparagraph|subsubsection|subsection|paragraph|chapter|section|part"
+    r")(?![A-Za-z])"
+)
 
 
 def parse_heading_path(remainder: str) -> HeadingPath | None:
@@ -78,6 +92,53 @@ def parse_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
     return tuple(records)
 
 
+def _delimited_span_end(text: str, start: int, opener: str, closer: str) -> int | None:
+    if start >= len(text) or text[start] != opener:
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        char = text[i]
+        if char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    return None
+
+
+def parse_tex_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
+    records: list[HeadingRecord] = []
+    for i, line in enumerate(lines):
+        m = _TEX_COMMAND_RE.match(line)
+        if m is None:
+            continue
+        pos = m.end()
+        if pos < len(line) and line[pos] == "*":
+            pos += 1
+        if pos < len(line) and line[pos] == "[":
+            bracket_end = _delimited_span_end(line, pos, "[", "]")
+            if bracket_end is None:
+                continue
+            pos = bracket_end
+        if pos >= len(line) or line[pos] != "{":
+            continue
+        brace_end = _delimited_span_end(line, pos, "{", "}")
+        if brace_end is None:
+            continue
+        title = line[pos + 1 : brace_end - 1].strip()
+        if not title:
+            continue
+        records.append(
+            HeadingRecord(
+                level=HeadingLevel(_TEX_LEVEL[m.group(1)]),
+                line_index=LineIndex(i),
+                text=HeadingText(title),
+            )
+        )
+    return tuple(records)
+
+
 def split_frontmatter(lines: Sequence[str]) -> FrontmatterSplit:
     body = tuple(lines)
     if not body or body[0].rstrip() != "---":
@@ -93,9 +154,11 @@ def extract_section(
     heading_path: HeadingPath,
     *,
     level_filter: HeadingLevel | None = None,
+    headings: tuple[HeadingRecord, ...] | None = None,
 ) -> ExtractedSection | None:
     """Extract by heading path. Same containment walk as the pre-split module."""
-    headings = parse_headings(lines)
+    if headings is None:
+        headings = parse_headings(lines)
     segments = heading_path.segments
     if not segments:
         return None
@@ -140,17 +203,26 @@ def extract_section(
     return ExtractedSection(level=match_level, lines=tuple(lines[int(match_idx) : bound_end]))
 
 
-def format_heading_list(lines: Sequence[str]) -> str:
+def format_heading_list(
+    lines: Sequence[str],
+    *,
+    headings: tuple[HeadingRecord, ...] | None = None,
+) -> str:
+    records = parse_headings(lines) if headings is None else headings
     out: list[str] = []
-    for record in parse_headings(lines):
+    for record in records:
         indent = "  " * (int(record.level) - 1)
         out.append(f"{indent}- {record.text}")
     return "\n".join(out)
 
 
-def format_file_index(split: FrontmatterSplit) -> str:
+def format_file_index(
+    split: FrontmatterSplit,
+    *,
+    headings: tuple[HeadingRecord, ...] | None = None,
+) -> str:
     frontmatter = "\n".join(split.frontmatter) if split.frontmatter is not None else ""
-    headings = format_heading_list(split.body)
-    if frontmatter and headings:
-        return f"{frontmatter}\n\n{headings}"
-    return frontmatter or headings
+    heading_list = format_heading_list(split.body, headings=headings)
+    if frontmatter and heading_list:
+        return f"{frontmatter}\n\n{heading_list}"
+    return frontmatter or heading_list
