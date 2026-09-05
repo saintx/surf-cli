@@ -13,7 +13,9 @@ from surf.logic import (
     format_file_index,
     format_heading_list,
     parse_heading_path,
+    parse_headings,
     parse_link,
+    parse_tex_headings,
     split_frontmatter,
 )
 from surf.models import (
@@ -32,7 +34,7 @@ type CliResult = CliSuccess | CliFailure
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="surf",
-        description="Extract markdown sections by heading with Obsidian link support.",
+        description="Extract markdown or TeX sections by heading with Obsidian link support.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -68,9 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="list_headings",
         help="List all headings in the file",
     )
-    parser.add_argument(
-        "--level", type=int, default=None, help="Only match headings at this level (1-6)"
-    )
+    parser.add_argument("--level", type=int, default=None, help="Only match headings at this level")
     parser.add_argument(
         "--no-heading", action="store_true", help="Exclude the heading line from output"
     )
@@ -112,21 +112,27 @@ def run(options: CliOptions) -> CliResult:
         return CliFailure(message=str(exc), exit_code=2)
     lines = read_document(path)
     split = split_frontmatter(lines)
+    headings = (
+        parse_tex_headings(split.body)
+        if path.suffix.lower() == ".tex"
+        else parse_headings(split.body)
+    )
 
     if options.list_headings:
-        return CliSuccess(body=format_heading_list(split.body))
+        return CliSuccess(body=format_heading_list(split.body, headings=headings))
     if options.frontmatter_only:
         if split.frontmatter is None:
             return CliSuccess(body="")
         return CliSuccess(body="\n".join(split.frontmatter))
 
     if options.heading_path is None:
-        return CliSuccess(body=format_file_index(split))
+        return CliSuccess(body=format_file_index(split, headings=headings))
 
     extracted = extract_section(
         split.body,
         options.heading_path,
         level_filter=options.level_filter,
+        headings=headings,
     )
     if extracted is None:
         remainder = "#".join(str(seg) for seg in options.heading_path.segments)
