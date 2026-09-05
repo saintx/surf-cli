@@ -189,3 +189,34 @@ def test_md_suffix_keeps_atx_not_tex_commands(tmp_path: Path) -> None:
     output = rendered(["--list", str(path)])
     assert "- Real" in output.splitlines()
     assert "Not a heading" not in output
+
+
+def test_tex_bom_prefixed_list_and_extract(tmp_path: Path) -> None:
+    path = tmp_path / "bom.tex"
+    path.write_bytes(b"\xef\xbb\xbf\\section{Related Work}\nbody\n")
+    listed = rendered(["--list", str(path)])
+    assert "Related Work" in listed
+    extracted = rendered([str(path), "Related Work"])
+    assert not extracted.startswith("\ufeff")
+    assert r"\section{Related Work}" in extracted
+    assert "body" in extracted
+
+
+def test_tex_multiline_title_list_and_extract(tmp_path: Path) -> None:
+    path = tmp_path / "wrap.tex"
+    path.write_text(
+        "\\section{Low Dimensions Suffice: Proof of \n"
+        "\\texorpdfstring{Theorem~\\ref{thm:main}}{Main Theorem}}\n"
+        "proof body\n"
+        "\\section{Next}\n"
+    )
+    listed = rendered(["--list", str(path)])
+    assert "Low Dimensions Suffice: Proof of" in listed
+    assert "Main Theorem" in listed
+    title = (
+        r"Low Dimensions Suffice: Proof of "
+        r"\texorpdfstring{Theorem~\ref{thm:main}}{Main Theorem}"
+    )
+    extracted = rendered([str(path), title])
+    assert "proof body" in extracted
+    assert r"\section{Next}" not in extracted

@@ -20,7 +20,7 @@ def resolve_file(file_ref: FileRef) -> Path:
 
 
 def read_document(path: Path) -> DocumentLines:
-    return tuple(path.read_text(encoding="utf-8").splitlines())
+    return tuple(path.read_text(encoding="utf-8-sig").splitlines())
 
 
 def write_output(text: str, dest: FileRef | None) -> None:

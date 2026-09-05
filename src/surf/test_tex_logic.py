@@ -241,3 +241,72 @@ def test_parse_subparagraph_level_seven() -> None:
     assert len(headings) == 1
     assert int(headings[0].level) == 7
     assert str(headings[0].text) == "Tiny"
+
+
+def test_parse_bom_prefixed_section_is_a_heading() -> None:
+    """Holdings p-000814 2_Related_Work.tex starts with UTF-8 BOM before \\section."""
+    lines = ["\ufeff\\section{Related Work}", "body"]
+    headings = parse_tex_headings(lines)
+    assert [str(record.text) for record in headings] == ["Related Work"]
+    result = extract_section(lines, hp("Related Work"), headings=headings)
+    assert result is not None
+    assert "body" in "\n".join(result.lines)
+
+
+def test_parse_multiline_section_title() -> None:
+    """Holdings p-001645 JL.tex wraps \\section{...} across lines."""
+    lines = [
+        r"\section{Low Dimensions Suffice: Proof of ",
+        r"\texorpdfstring{Theorem~\ref{thm:main}}{Main Theorem}}",
+        r"\label{sec:mainthmproof}",
+        "proof body",
+        r"\section{Next}",
+    ]
+    headings = parse_tex_headings(lines)
+    assert [str(record.text) for record in headings] == [
+        r"Low Dimensions Suffice: Proof of \texorpdfstring{Theorem~\ref{thm:main}}{Main Theorem}",
+        "Next",
+    ]
+    result = extract_section(
+        lines,
+        hp(
+            r"Low Dimensions Suffice: Proof of "
+            r"\texorpdfstring{Theorem~\ref{thm:main}}{Main Theorem}"
+        ),
+        headings=headings,
+    )
+    assert result is not None
+    text = "\n".join(result.lines)
+    assert "proof body" in text
+    assert r"\section{Next}" not in text
+
+
+def test_parse_multiline_paragraph_title() -> None:
+    """Holdings p-001654 05_results.tex wraps \\paragraph titles at column wrap."""
+    lines = [
+        r"\paragraph{The skill setting asks the same question with a harder probe, and",
+        r"the winner depends on who consumes the memory.} Under the",
+        r"stronger agent the verbatim lead holds.",
+        r"\paragraph{Later}",
+    ]
+    headings = parse_tex_headings(lines)
+    assert [str(record.text) for record in headings] == [
+        "The skill setting asks the same question with a harder probe, and "
+        "the winner depends on who consumes the memory.",
+        "Later",
+    ]
+    result = extract_section(
+        lines,
+        hp(
+            "The skill setting asks the same question with a harder probe, and "
+            "the winner depends on who consumes the memory."
+        ),
+        headings=headings,
+    )
+    assert result is not None
+    assert "verbatim lead holds" in "\n".join(result.lines)
+    assert r"\paragraph{Later}" not in "\n".join(result.lines)
+
+
+def test_unclosed_title_at_eof_is_not_a_heading() -> None:
+    assert parse_tex_headings([r"\section{Never closed"]) == ()

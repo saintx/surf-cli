@@ -35,6 +35,12 @@ def test_read_document(tmp_path: Path) -> None:
     assert read_document(path)[0] == "# A"
 
 
+def test_read_document_strips_utf8_bom(tmp_path: Path) -> None:
+    path = tmp_path / "bom.tex"
+    path.write_bytes(b"\xef\xbb\xbf\\section{Related Work}\n")
+    assert read_document(path)[0] == r"\section{Related Work}"
+
+
 def test_write_output_file(tmp_path: Path) -> None:
     dest = tmp_path / "out.md"
     write_output("- Introduction", FileRef(str(dest)))

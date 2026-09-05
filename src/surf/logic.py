@@ -107,35 +107,60 @@ def _delimited_span_end(text: str, start: int, opener: str, closer: str) -> int 
     return None
 
 
+def _join_from(lines: Sequence[str], start_line: int, start_col: int) -> str:
+    first = lines[start_line][start_col:]
+    if start_line + 1 >= len(lines):
+        return first
+    return first + "\n" + "\n".join(lines[start_line + 1 :])
+
+
+def _parse_tex_heading_at(
+    lines: Sequence[str], line_index: int
+) -> tuple[HeadingRecord, int] | None:
+    line = lines[line_index]
+    m = _TEX_COMMAND_RE.match(line)
+    if m is None:
+        return None
+    rest = _join_from(lines, line_index, m.end())
+    pos = 0
+    if pos < len(rest) and rest[pos] == "*":
+        pos += 1
+    if pos < len(rest) and rest[pos] == "[":
+        bracket_end = _delimited_span_end(rest, pos, "[", "]")
+        if bracket_end is None:
+            return None
+        pos = bracket_end
+    if pos >= len(rest) or rest[pos] != "{":
+        return None
+    brace_end = _delimited_span_end(rest, pos, "{", "}")
+    if brace_end is None:
+        return None
+    title = re.sub(r"\s+", " ", rest[pos + 1 : brace_end - 1]).strip()
+    if not title:
+        return None
+    consumed_through = line_index + rest[:brace_end].count("\n")
+    return (
+        HeadingRecord(
+            level=HeadingLevel(_TEX_LEVEL[m.group(1)]),
+            line_index=LineIndex(line_index),
+            text=HeadingText(title),
+        ),
+        consumed_through,
+    )
+
+
 def parse_tex_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
+    stripped = tuple(line.lstrip("\ufeff") for line in lines)
     records: list[HeadingRecord] = []
-    for i, line in enumerate(lines):
-        m = _TEX_COMMAND_RE.match(line)
-        if m is None:
+    i = 0
+    while i < len(stripped):
+        parsed = _parse_tex_heading_at(stripped, i)
+        if parsed is None:
+            i += 1
             continue
-        pos = m.end()
-        if pos < len(line) and line[pos] == "*":
-            pos += 1
-        if pos < len(line) and line[pos] == "[":
-            bracket_end = _delimited_span_end(line, pos, "[", "]")
-            if bracket_end is None:
-                continue
-            pos = bracket_end
-        if pos >= len(line) or line[pos] != "{":
-            continue
-        brace_end = _delimited_span_end(line, pos, "{", "}")
-        if brace_end is None:
-            continue
-        title = line[pos + 1 : brace_end - 1].strip()
-        if not title:
-            continue
-        records.append(
-            HeadingRecord(
-                level=HeadingLevel(_TEX_LEVEL[m.group(1)]),
-                line_index=LineIndex(i),
-                text=HeadingText(title),
-            )
-        )
+        record, consumed_through = parsed
+        records.append(record)
+        i = consumed_through + 1
     return tuple(records)
 
 
