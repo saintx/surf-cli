@@ -1,0 +1,18 @@
+{
+  "name": "surf-cli",
+  "owner": { "name": "Alexander R. Saint Croix", "email": "alex@saintx.us" },
+  "metadata": {
+    "description": "Plugins shipped with the surf CLI.",
+    "version": "0.6.4"
+  },
+  "plugins": [
+    {
+      "name": "surf",
+      "source": "./plugins/surf",
+      "description": "Extract a markdown heading, TeX section, or PDF outline item without loading the rest of the file.",
+      "version": "0.6.4",
+      "category": "tooling",
+      "keywords": ["surf", "markdown", "tex", "pdf", "context", "skills"]
+    }
+  ]
+}

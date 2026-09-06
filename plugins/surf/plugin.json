@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "surf",
+  "version": "0.6.4",
+  "description": "Extract a markdown heading, TeX section, or PDF outline item without loading the rest of the file. Skill for agents using the surf CLI.",
+  "author": { "name": "Alexander R. Saint Croix", "email": "alex@saintx.us", "url": "https://github.com/saintx" },
+  "homepage": "https://github.com/saintx/surf-cli",
+  "repository": "https://github.com/saintx/surf-cli",
+  "license": "MIT",
+  "keywords": ["surf", "markdown", "tex", "pdf", "context", "skills"]
+}

@@ -1,18 +1,66 @@
 # surf
 
-Extract a markdown, TeX, or PDF section by heading without loading the rest of the file.
+Extract one section of a markdown, TeX, or PDF file by its heading. The rest of the file never loads.
 
 ```bash
-surf path/to/file.md "Heading"
-surf -l path/to/file.md
-surf -f path/to/file.md
-surf -l path/to/file.tex
-surf path/to/file.tex "Heading"
-surf -l path/to/file.pdf
-surf path/to/file.pdf "Heading"
+uv tool install surf-cli
+cd plugins/surf/skills/surf/references
 ```
 
-A heading is an address: ATX display text on markdown, brace title on TeX, the TeX `abstract` environment (addressed as `abstract`), or an outline bookmark title on PDF. On markdown and TeX the return value is that section through the next heading of the same or higher level. On PDF it is dest-to-next-dest page text; when the next dest is on the same page, that dest page is included. Nested paths (`Parent#Child`) distinguish same-named headings under different parents.
+A file with no heading named returns the map, frontmatter and then headings, and none of the body:
+
+```
+$ surf about.md
+---
+metadata:
+  author:
+    name: Alexander R. Saint Croix
+    github_username: saintx
+    email: alex@saintx.us
+    twitter: alexsaintx
+  surf-version: "0.6.4"
+---
+
+- Surf — About
+  - Overview
+  - When to use
+```
+
+A heading returns that section and stops at the next heading of the same or higher level:
+
+```
+$ surf about.md "When to use"
+## When to use
+
+Invoke when skimming markdown, TeX, or PDF files, checking what a file contains,
+listing structure, extracting a named address, or batch-scanning metadata across
+a directory. See `surf --help` for CLI flags. Skip when the full body is already
+needed. ...
+```
+
+The same two commands work on TeX, addressed by sectioning commands and the `abstract` environment, and on PDF, addressed by outline bookmarks. The whitepaper in this directory ships in both forms and lists the same tree from either:
+
+```
+$ surf surf.tex --list
+- abstract
+- Background
+- A Thin Index Shaped by Intent
+- Agentic Context Composition
+- Skills You Can Check
+- Indexes over Indexes
+- Markdown, TeX, and PDF
+- This Paper
+
+$ surf surf.pdf "Skills You Can Check"
+```
+
+surf exists so that agent skills can be thin. The `SKILL.md` beside these files is a table of intents, each resolving to `surf path "Heading"`, over reference material the agent never reads whole. `surf.pdf` explains why the tool was built and what that pattern makes possible.
+
+## Addressing
+
+`surf --list file.md` is the heading tree without YAML. `surf -f file.md` is YAML only. Nested paths (`Overview#Usage`) select a child when the same name appears under different parents.
+
+A heading is an address: ATX display text on markdown, brace title on TeX, the TeX `abstract` environment (addressed as `abstract`), or an outline bookmark title on PDF. On markdown and TeX the return value is that section through the next heading of the same or higher level. On PDF it is dest-to-next-dest page text; when the next dest is on the same page, that dest page is included.
 
 `--level` is 1 at the top of the heading tree. On markdown that is `#`. On TeX it is the shallowest command in the file, so `--level 1` is `\section` in an article. On PDF it is the outline's native rank. Listing with `--level N` includes ranks 1 through N. Named extract uses N as an exact match.
 
@@ -22,80 +70,64 @@ If the file has no headings, or a PDF has no outline, surf prints that it has no
 
 Python 3.12+. pypdf is the runtime dependency for PDF outline addressing.
 
+## Agent skill
+
+`plugins/surf` packages the skill for agents. It carries a Claude Code manifest, an Agent Plugins 1.0.0 manifest, and the skill itself at `plugins/surf/skills/surf`, in the Agent Skills format that Claude Code, Codex, Gemini CLI, Cursor, and Grok Build read.
+
+Claude Code installs it from the marketplace in this repo:
+
+```bash
+claude plugin marketplace add saintx/surf-cli
+claude plugin install surf@surf-cli
+```
+
+Any harness that reads a skills directory takes a copy of the skill:
+
+```bash
+cp -R plugins/surf/skills/surf ~/.agents/skills/surf
+```
+
+The repo also carries `.agents/skills/surf`, `.claude/skills/surf`, and `.grok/skills/surf` as symlinks into the plugin, so an agent working in this checkout has the skill available.
+
 ## Install
 
-Packaged as a nix flake. The `surf` CLI is installed globally via nix profile.
-
-Requires Nix with flakes, and SSH access to the private repository `git@github.com:saintx/surf-cli.git`.
+The distribution name is `surf-cli`. The command is `surf`. Python 3.12+.
 
 ```bash
-nix profile install 'git+ssh://git@github.com:saintx/surf-cli.git'
+uv tool install surf-cli
 surf --version
 ```
 
-That tracks the default branch (most recent commit). To pin a tagged release, list tags and append `?ref=X.Y.Z`:
-
 ```bash
-git ls-remote --tags git@github.com:saintx/surf-cli.git
-nix profile install 'git+ssh://git@github.com:saintx/surf-cli.git?ref=X.Y.Z'
+pipx install surf-cli
 surf --version
 ```
 
-If no tags are listed, use the default-branch install above. Version is semver (`X.Y.Z`); `surf --version` prints `surf X.Y.Z`.
+```bash
+pip install surf-cli
+```
 
-From a local clone, use a `git+file` URL, or run `scripts/deploy.sh` to sync, test, and install the latest local semver tag:
+### Nix
+
+From a local clone, install the flake into the nix profile:
 
 ```bash
-git clone git@github.com:saintx/surf-cli.git
-cd surf-cli
-nix profile install "git+file://${PWD}?ref=X.Y.Z"
+nix profile install "git+file://${PWD}"
 surf --version
 ```
 
-If `surf` is already in the profile under a different flake URL, remove it first:
-
-```bash
-nix profile remove surf
-nix profile install 'git+ssh://git@github.com:saintx/surf-cli.git?ref=X.Y.Z'
-```
-
-## Deployment
-
-```bash
-scripts/deploy.sh            # sync + test + install latest local semver tag
-nix profile upgrade surf     # rebuild the currently installed flake URL
-surf --version               # verify
-```
-
-`nix profile upgrade surf` rebuilds whatever flake URL is already in the profile. It does not follow a newly created tag. After tagging, retarget the profile (or run `scripts/deploy.sh`, which does this):
+Pin a tagged release with `?ref=X.Y.Z`. If `surf` is already in the profile under a different flake URL, remove it first:
 
 ```bash
 nix profile remove surf
 nix profile install "git+file://${PWD}?ref=X.Y.Z"
-surf --version
 ```
 
-### Releasing
+`scripts/deploy.sh` syncs, tests, and retargets the profile at the latest local semver tag.
 
-Version is semver (`X.Y.Z`) and is defined in three places that must stay in sync:
+## Releasing
 
-- `pyproject.toml` — `version = "x.y.z"`
-- `flake.nix` — `version = "x.y.z"`
-- `src/surf/__init__.py` — `__version__ = "x.y.z"`
-
-Git tags are the same string. `surf --version` prints `surf X.Y.Z`.
-
-Bump version in those three files, then:
-
-```bash
-git add pyproject.toml flake.nix src/surf/__init__.py
-git commit -m "Bump version to x.y.z"
-git tag x.y.z
-scripts/deploy.sh
-git push origin x.y.z
-```
-
-`scripts/deploy.sh` runs uv sync, tests, and a nix profile rebuild against the new tag. Pushing the tag is what lets another environment install that version.
+Version locations, the bump checklist, tagging, and nix profile deployment are in [RELEASING.md](RELEASING.md).
 
 ## Development
 
