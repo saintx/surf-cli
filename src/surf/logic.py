@@ -8,6 +8,9 @@ from collections.abc import Sequence
 from urllib.parse import unquote
 
 from surf.models import (
+    CharOffset,
+    ClosedSpan,
+    Delimiter,
     ExtractedSection,
     FileRef,
     FrontmatterSplit,
@@ -17,6 +20,7 @@ from surf.models import (
     HeadingText,
     LineIndex,
     ParsedLink,
+    ScanBuffer,
 )
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
@@ -92,88 +96,97 @@ def parse_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
     return tuple(records)
 
 
-def _delimited_span_end(text: str, start: int, opener: str, closer: str) -> int | None:
-    if start >= len(text) or text[start] != opener:
+def _delimited_span_end(
+    buffer: ScanBuffer,
+    start: CharOffset,
+    opener: Delimiter,
+    closer: Delimiter,
+) -> CharOffset | None:
+    if start >= len(buffer) or buffer[start] != opener:
         return None
     depth = 0
-    for i in range(start, len(text)):
-        char = text[i]
+    for i in range(start, len(buffer)):
+        char = buffer[i]
         if char == opener:
             depth += 1
         elif char == closer:
             depth -= 1
             if depth == 0:
-                return i + 1
+                return CharOffset(i + 1)
     return None
 
 
 def _extend_until_closed(
     lines: Sequence[str],
-    start_line: int,
-    rest: str,
-    pos: int,
-    opener: str,
-    closer: str,
-) -> tuple[str, int, int] | None:
+    start_line: LineIndex,
+    rest: ScanBuffer,
+    pos: CharOffset,
+    opener: Delimiter,
+    closer: Delimiter,
+) -> ClosedSpan | None:
     end = _delimited_span_end(rest, pos, opener, closer)
     if end is not None:
-        return rest, end, start_line
+        return ClosedSpan(buffer=rest, end=end, last_line=start_line)
     for j in range(start_line + 1, len(lines)):
-        rest = rest + "\n" + lines[j]
+        rest = ScanBuffer(rest + "\n" + lines[j])
         end = _delimited_span_end(rest, pos, opener, closer)
         if end is not None:
-            return rest, end, j
+            return ClosedSpan(buffer=rest, end=end, last_line=LineIndex(j))
     return None
 
 
 def _parse_tex_heading_at(
-    lines: Sequence[str], line_index: int
-) -> tuple[HeadingRecord, int] | None:
+    lines: Sequence[str], line_index: LineIndex
+) -> tuple[HeadingRecord, LineIndex] | None:
     line = lines[line_index]
     if line_index == 0:
         line = line.lstrip("\ufeff")
     m = _TEX_COMMAND_RE.match(line)
     if m is None:
         return None
-    rest = line[m.end() :]
-    pos = 0
+    rest = ScanBuffer(line[m.end() :])
+    pos = CharOffset(0)
     if pos < len(rest) and rest[pos] == "*":
-        pos += 1
+        pos = CharOffset(pos + 1)
     if pos < len(rest) and rest[pos] == "[":
-        extended = _extend_until_closed(lines, line_index, rest, pos, "[", "]")
+        extended = _extend_until_closed(
+            lines, line_index, rest, pos, Delimiter("["), Delimiter("]")
+        )
         if extended is None:
             return None
-        rest, pos, _ = extended
+        rest = extended.buffer
+        pos = extended.end
     if pos >= len(rest) or rest[pos] != "{":
         return None
-    extended = _extend_until_closed(lines, line_index, rest, pos, "{", "}")
+    extended = _extend_until_closed(lines, line_index, rest, pos, Delimiter("{"), Delimiter("}"))
     if extended is None:
         return None
-    rest, brace_end, last_line = extended
+    rest = extended.buffer
+    brace_end = extended.end
     title = re.sub(r"\s+", " ", rest[pos + 1 : brace_end - 1]).strip()
     if not title:
         return None
     return (
         HeadingRecord(
             level=HeadingLevel(_TEX_LEVEL[m.group(1)]),
-            line_index=LineIndex(line_index),
+            line_index=line_index,
             text=HeadingText(title),
         ),
-        last_line,
+        extended.last_line,
     )
 
 
 def parse_tex_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
     records: list[HeadingRecord] = []
-    i = 0
+    i = LineIndex(0)
     while i < len(lines):
         parsed = _parse_tex_heading_at(lines, i)
         if parsed is None:
-            i += 1
+            i = LineIndex(i + 1)
             continue
         record, consumed_through = parsed
         records.append(record)
-        i = consumed_through + 1
+        i = LineIndex(consumed_through + 1)
     return tuple(records)
 
 

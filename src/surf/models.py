@@ -10,6 +10,9 @@ HeadingText = NewType("HeadingText", str)
 FileRef = NewType("FileRef", str)
 HeadingLevel = NewType("HeadingLevel", int)
 LineIndex = NewType("LineIndex", int)
+ScanBuffer = NewType("ScanBuffer", str)
+CharOffset = NewType("CharOffset", int)
+Delimiter = NewType("Delimiter", str)
 
 type DocumentLines = tuple[str, ...]
 
@@ -24,6 +27,13 @@ class HeadingRecord:
     level: HeadingLevel
     line_index: LineIndex
     text: HeadingText
+
+
+@dataclass(frozen=True, slots=True)
+class ClosedSpan:
+    buffer: ScanBuffer
+    end: CharOffset
+    last_line: LineIndex
 
 
 @dataclass(frozen=True, slots=True)
