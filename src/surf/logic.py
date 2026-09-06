@@ -107,54 +107,67 @@ def _delimited_span_end(text: str, start: int, opener: str, closer: str) -> int 
     return None
 
 
-def _join_from(lines: Sequence[str], start_line: int, start_col: int) -> str:
-    first = lines[start_line][start_col:]
-    if start_line + 1 >= len(lines):
-        return first
-    return first + "\n" + "\n".join(lines[start_line + 1 :])
+def _extend_until_closed(
+    lines: Sequence[str],
+    start_line: int,
+    rest: str,
+    pos: int,
+    opener: str,
+    closer: str,
+) -> tuple[str, int, int] | None:
+    end = _delimited_span_end(rest, pos, opener, closer)
+    if end is not None:
+        return rest, end, start_line
+    for j in range(start_line + 1, len(lines)):
+        rest = rest + "\n" + lines[j]
+        end = _delimited_span_end(rest, pos, opener, closer)
+        if end is not None:
+            return rest, end, j
+    return None
 
 
 def _parse_tex_heading_at(
     lines: Sequence[str], line_index: int
 ) -> tuple[HeadingRecord, int] | None:
     line = lines[line_index]
+    if line_index == 0:
+        line = line.lstrip("\ufeff")
     m = _TEX_COMMAND_RE.match(line)
     if m is None:
         return None
-    rest = _join_from(lines, line_index, m.end())
+    rest = line[m.end() :]
     pos = 0
     if pos < len(rest) and rest[pos] == "*":
         pos += 1
     if pos < len(rest) and rest[pos] == "[":
-        bracket_end = _delimited_span_end(rest, pos, "[", "]")
-        if bracket_end is None:
+        extended = _extend_until_closed(lines, line_index, rest, pos, "[", "]")
+        if extended is None:
             return None
-        pos = bracket_end
+        rest, pos, _ = extended
     if pos >= len(rest) or rest[pos] != "{":
         return None
-    brace_end = _delimited_span_end(rest, pos, "{", "}")
-    if brace_end is None:
+    extended = _extend_until_closed(lines, line_index, rest, pos, "{", "}")
+    if extended is None:
         return None
+    rest, brace_end, last_line = extended
     title = re.sub(r"\s+", " ", rest[pos + 1 : brace_end - 1]).strip()
     if not title:
         return None
-    consumed_through = line_index + rest[:brace_end].count("\n")
     return (
         HeadingRecord(
             level=HeadingLevel(_TEX_LEVEL[m.group(1)]),
             line_index=LineIndex(line_index),
             text=HeadingText(title),
         ),
-        consumed_through,
+        last_line,
     )
 
 
 def parse_tex_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
-    stripped = tuple(line.lstrip("\ufeff") for line in lines)
     records: list[HeadingRecord] = []
     i = 0
-    while i < len(stripped):
-        parsed = _parse_tex_heading_at(stripped, i)
+    while i < len(lines):
+        parsed = _parse_tex_heading_at(lines, i)
         if parsed is None:
             i += 1
             continue
