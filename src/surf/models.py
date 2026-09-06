@@ -21,6 +21,8 @@ RenderedBody = NewType("RenderedBody", str)
 ErrorMessage = NewType("ErrorMessage", str)
 ExitCode = NewType("ExitCode", int)
 TexIncludeRelPath = NewType("TexIncludeRelPath", str)
+LineCount = NewType("LineCount", int)
+ByteCount = NewType("ByteCount", int)
 
 type DocumentLines = tuple[str, ...]
 
@@ -38,6 +40,10 @@ class TexCommand(StrEnum):
 class TexIncludeCommand(StrEnum):
     INPUT = "input"
     INCLUDE = "include"
+
+
+class TexEnvironment(StrEnum):
+    ABSTRACT = "abstract"
 
 
 @dataclass(frozen=True, slots=True)

@@ -7,7 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from surf.adapters import read_document, resolve_file, resolve_tex_include, write_output
+from surf.adapters import (
+    document_byte_count,
+    read_document,
+    resolve_file,
+    resolve_tex_include,
+    write_output,
+)
 from surf.models import FileRef, RenderedBody, TexIncludeRelPath
 
 
@@ -49,6 +55,12 @@ def test_resolve_tex_include_existing_and_missing(tmp_path: Path) -> None:
     found = resolve_tex_include(tmp_path, TexIncludeRelPath("chapters/1_introduction.tex"))
     assert found == target
     assert resolve_tex_include(tmp_path, TexIncludeRelPath("chapters/missing.tex")) is None
+
+
+def test_document_byte_count_matches_stat(tmp_path: Path) -> None:
+    path = tmp_path / "a.tex"
+    path.write_text("\\newcommand{\\foo}{bar}\n")
+    assert int(document_byte_count(path)) == path.stat().st_size
 
 
 def test_write_output_file(tmp_path: Path) -> None:

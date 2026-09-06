@@ -10,9 +10,11 @@ surf -l path/to/file.tex
 surf path/to/file.tex "Heading"
 ```
 
-A heading is an address: ATX display text on markdown, brace title on TeX. The return value is that section through the next heading of the same or higher level. Nested paths (`Parent#Child`) distinguish same-named headings under different parents.
+A heading is an address: ATX display text on markdown, brace title on TeX, or the TeX `abstract` environment (addressed as `abstract`). The return value is that section through the next heading of the same or higher level. Nested paths (`Parent#Child`) distinguish same-named headings under different parents.
 
 TeX `\input` and `\include` of `.tex` files are expanded relative to the file you name. Graphics, comments, shell pipes, and macro-constructed paths are not.
+
+If the file has no headings, surf prints that it has no structural index, with the file's line and byte counts. It does not dump the body.
 
 ## Install
 

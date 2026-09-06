@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from urllib.parse import unquote
 
 from surf.models import (
+    ByteCount,
     CharOffset,
     CliTarget,
     ClosedSpan,
@@ -21,11 +22,13 @@ from surf.models import (
     HeadingPathRemainder,
     HeadingRecord,
     HeadingText,
+    LineCount,
     LineIndex,
     ParsedLink,
     RenderedBody,
     ScanBuffer,
     TexCommand,
+    TexEnvironment,
     TexIncludeCommand,
     TexIncludeRelPath,
 )
@@ -171,7 +174,7 @@ def _parse_tex_heading_at(
         return None
     command = _TEX_COMMAND_BY_WORD.get(m.group(1))
     if command is None:
-        return None
+        return _parse_tex_abstract_at(line_index, line, m)
     rest = ScanBuffer(line[m.end() :])
     pos = CharOffset(0)
     if pos < len(rest) and rest[pos] == "*":
@@ -203,6 +206,33 @@ def _parse_tex_heading_at(
             text=HeadingText(title),
         ),
         extended.last_line,
+    )
+
+
+def _parse_tex_abstract_at(
+    line_index: LineIndex,
+    line: str,
+    matched: re.Match[str],
+) -> tuple[HeadingRecord, LineIndex] | None:
+    if matched.group(1) != "begin":
+        return None
+    rest = ScanBuffer(line[matched.end() :])
+    pos = _skip_horizontal(rest, CharOffset(0))
+    if pos >= len(rest) or rest[pos] != "{":
+        return None
+    end = _delimited_span_end(rest, pos, Delimiter("{"), Delimiter("}"))
+    if end is None:
+        return None
+    if rest[pos + 1 : end - 1].strip() != TexEnvironment.ABSTRACT:
+        return None
+    return (
+        HeadingRecord(
+            level=_TEX_LEVEL[TexCommand.SECTION],
+            line_index=line_index,
+            title_end_line=line_index,
+            text=HeadingText(TexEnvironment.ABSTRACT),
+        ),
+        line_index,
     )
 
 
@@ -338,6 +368,10 @@ def extract_section(
         lines=tuple(lines[int(match_idx) : bound_end]),
         heading_line_count=HeadingLineCount(int(match_title_end) - int(match_idx) + 1),
     )
+
+
+def format_empty_index(*, line_count: LineCount, byte_count: ByteCount) -> RenderedBody:
+    return RenderedBody(f"no structural index\nlines: {int(line_count)}\nbytes: {int(byte_count)}")
 
 
 def format_heading_list(

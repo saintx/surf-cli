@@ -9,9 +9,16 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from surf import __version__
-from surf.adapters import read_document, resolve_file, resolve_tex_include, write_output
+from surf.adapters import (
+    document_byte_count,
+    read_document,
+    resolve_file,
+    resolve_tex_include,
+    write_output,
+)
 from surf.logic import (
     extract_section,
+    format_empty_index,
     format_file_index,
     format_heading_list,
     parse_heading_path,
@@ -34,6 +41,7 @@ from surf.models import (
     HeadingPath,
     HeadingPathRemainder,
     HeadingText,
+    LineCount,
     RenderedBody,
 )
 
@@ -126,6 +134,8 @@ def run(options: CliOptions) -> CliResult:
     except FileNotFoundError as exc:
         return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(2))
     lines = read_document(path)
+    line_count = LineCount(len(lines))
+    byte_count = document_byte_count(path)
     if path.suffix.lower() == ".tex":
         lines = _expand_tex_inputs(
             lines,
@@ -139,8 +149,11 @@ def run(options: CliOptions) -> CliResult:
         if path.suffix.lower() == ".tex"
         else parse_headings(split.body)
     )
+    empty_index = format_empty_index(line_count=line_count, byte_count=byte_count)
 
     if options.list_headings:
+        if not headings:
+            return CliSuccess(body=empty_index)
         return CliSuccess(
             body=format_heading_list(
                 split.body, headings=headings, level_filter=options.level_filter
@@ -152,6 +165,8 @@ def run(options: CliOptions) -> CliResult:
         return CliSuccess(body=RenderedBody("\n".join(split.frontmatter)))
 
     if options.heading_path is None:
+        if not headings and split.frontmatter is None:
+            return CliSuccess(body=empty_index)
         return CliSuccess(
             body=format_file_index(split, headings=headings, level_filter=options.level_filter)
         )

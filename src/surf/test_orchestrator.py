@@ -330,3 +330,77 @@ def test_tex_multiline_title_list_and_extract(tmp_path: Path) -> None:
     extracted = rendered([str(path), title])
     assert "proof body" in extracted
     assert r"\section{Next}" not in extracted
+
+
+def empty_index_text(path: Path, contents: str) -> str:
+    path.write_text(contents)
+    lines = contents.splitlines()
+    return f"no structural index\nlines: {len(lines)}\nbytes: {path.stat().st_size}"
+
+
+def test_headingless_tex_reports_empty_index_not_body(tmp_path: Path) -> None:
+    path = tmp_path / "macros.tex"
+    expected = empty_index_text(path, "\\newcommand{\\foo}{bar}\n" * 3)
+    listed = rendered(["--list", str(path)])
+    indexed = rendered([str(path)])
+    assert listed == expected
+    assert indexed == expected
+    assert "\\newcommand" not in listed
+    assert "foo" not in listed
+
+
+def test_headingless_markdown_reports_empty_index(tmp_path: Path) -> None:
+    path = tmp_path / "notes.md"
+    expected = empty_index_text(path, "just a paragraph\nwith two lines\n")
+    assert rendered(["--list", str(path)]) == expected
+    assert rendered([str(path)]) == expected
+    assert "just a paragraph" not in rendered([str(path)])
+
+
+def test_markdown_frontmatter_without_headings_keeps_yaml_index(tmp_path: Path) -> None:
+    path = tmp_path / "notes.md"
+    path.write_text("---\ntitle: YAML Only\n---\nBody without headings.\n")
+    indexed = rendered([str(path)])
+    assert "title: YAML Only" in indexed
+    assert "Body without headings" not in indexed
+    listed = rendered(["--list", str(path)])
+    assert listed.splitlines()[0] == "no structural index"
+    assert "Body without headings" not in listed
+
+
+def test_tex_abstract_list_and_extract(tmp_path: Path) -> None:
+    path = tmp_path / "paper.tex"
+    path.write_text(
+        "\\begin{abstract}\nabstract body\n\\end{abstract}\n"
+        "\\section{Introduction}\nintro body\n"
+    )
+    listed = rendered(["--list", str(path)])
+    assert listed.splitlines() == [
+        "    - abstract",
+        "    - Introduction",
+    ]
+    extracted = rendered([str(path), "abstract"])
+    assert r"\begin{abstract}" in extracted
+    assert "abstract body" in extracted
+    assert "intro body" not in extracted
+    assert r"\section{Introduction}" not in extracted
+
+
+def test_tex_abstract_via_input(tmp_path: Path) -> None:
+    (tmp_path / "00abstract.tex").write_text("spliced abstract body\n")
+    master = tmp_path / "main.tex"
+    master.write_text("\\begin{abstract}\n\\input{00abstract}\n\\end{abstract}\n")
+    listed = rendered(["--list", str(master)])
+    assert listed.splitlines() == ["    - abstract"]
+    extracted = rendered([str(master), "Abstract"])
+    assert "spliced abstract body" in extracted
+    assert r"\begin{abstract}" in extracted
+
+
+def test_tex_no_heading_drops_begin_abstract_line(tmp_path: Path) -> None:
+    path = tmp_path / "paper.tex"
+    path.write_text("\\begin{abstract}\nabstract body\n\\end{abstract}\n")
+    output = rendered(["--no-heading", str(path), "abstract"])
+    assert r"\begin{abstract}" not in output
+    assert "abstract body" in output
+    assert r"\end{abstract}" in output

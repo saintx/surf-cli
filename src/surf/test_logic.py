@@ -7,6 +7,7 @@ import textwrap
 
 from surf.logic import (
     extract_section,
+    format_empty_index,
     format_file_index,
     format_heading_list,
     parse_heading_path,
@@ -15,12 +16,14 @@ from surf.logic import (
     split_frontmatter,
 )
 from surf.models import (
+    ByteCount,
     CliTarget,
     FileRef,
     HeadingLevel,
     HeadingPath,
     HeadingPathRemainder,
     HeadingText,
+    LineCount,
     ParsedLink,
 )
 
@@ -301,3 +304,12 @@ def test_format_file_index_headings_only() -> None:
     assert "Hello world" not in text
     assert "Sub content" not in text
     assert "title:" not in text
+
+
+def test_format_empty_index_reports_lines_and_bytes() -> None:
+    text = format_empty_index(line_count=LineCount(142), byte_count=ByteCount(1685))
+    assert text.splitlines() == [
+        "no structural index",
+        "lines: 142",
+        "bytes: 1685",
+    ]

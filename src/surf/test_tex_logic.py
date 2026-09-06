@@ -22,6 +22,7 @@ from surf.models import (
     HeadingPath,
     HeadingPathRemainder,
     TexCommand,
+    TexEnvironment,
     TexIncludeCommand,
 )
 
@@ -333,6 +334,7 @@ def test_tex_command_level_map() -> None:
     assert _TEX_COMMAND_BY_WORD.get("section") is TexCommand.SECTION
     assert _TEX_COMMAND_BY_WORD.get("begin") is None
     assert _TEX_COMMAND_BY_WORD.get("sectioning") is None
+    assert TexEnvironment.ABSTRACT == "abstract"
 
 
 def test_parse_space_between_optional_and_long_title() -> None:
@@ -394,3 +396,44 @@ def test_tex_include_path_skips_non_includes() -> None:
     assert tex_include_path(r"\include foo") is None
     assert _TEX_INCLUDE_BY_WORD.get("input") is TexIncludeCommand.INPUT
     assert _TEX_INCLUDE_BY_WORD.get("includegraphics") is None
+
+
+def test_parse_abstract_environment_is_section_rank_heading() -> None:
+    lines = tex_lines(r"""
+        \begin{abstract}
+        abstract body
+        \end{abstract}
+        \section{Introduction}
+        intro body
+        """)
+    headings = parse_tex_headings(lines)
+    assert [(int(record.level), str(record.text)) for record in headings] == [
+        (3, "abstract"),
+        (3, "Introduction"),
+    ]
+    listed = format_heading_list(lines, headings=headings)
+    assert listed.splitlines() == [
+        "    - abstract",
+        "    - Introduction",
+    ]
+    result = extract_section(lines, hp("abstract"), headings=headings)
+    assert result is not None
+    text = "\n".join(result.lines)
+    assert r"\begin{abstract}" in text
+    assert "abstract body" in text
+    assert r"\end{abstract}" in text
+    assert r"\section{Introduction}" not in text
+    assert "intro body" not in text
+
+
+def test_commented_abstract_is_not_a_heading() -> None:
+    lines = tex_lines(r"""
+        % \begin{abstract}
+        \section{Real}
+        """)
+    assert [str(record.text) for record in parse_tex_headings(lines)] == ["Real"]
+
+
+def test_begin_figure_is_not_a_heading() -> None:
+    lines = [r"\begin{figure}", r"\section{Real}"]
+    assert [str(record.text) for record in parse_tex_headings(lines)] == ["Real"]

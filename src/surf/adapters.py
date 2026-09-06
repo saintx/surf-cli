@@ -5,7 +5,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from surf.models import DocumentLines, FileRef, RenderedBody, TexIncludeRelPath
+from surf.models import (
+    ByteCount,
+    DocumentLines,
+    FileRef,
+    RenderedBody,
+    TexIncludeRelPath,
+)
 
 
 def resolve_file(file_ref: FileRef) -> Path:
@@ -21,6 +27,10 @@ def resolve_file(file_ref: FileRef) -> Path:
 
 def read_document(path: Path) -> DocumentLines:
     return tuple(path.read_text(encoding="utf-8-sig").splitlines())
+
+
+def document_byte_count(path: Path) -> ByteCount:
+    return ByteCount(path.stat().st_size)
 
 
 def resolve_tex_include(base_dir: Path, rel: TexIncludeRelPath) -> Path | None:
