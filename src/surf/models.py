@@ -20,6 +20,7 @@ HeadingPathRemainder = NewType("HeadingPathRemainder", str)
 RenderedBody = NewType("RenderedBody", str)
 ErrorMessage = NewType("ErrorMessage", str)
 ExitCode = NewType("ExitCode", int)
+TexIncludeRelPath = NewType("TexIncludeRelPath", str)
 
 type DocumentLines = tuple[str, ...]
 
@@ -32,6 +33,11 @@ class TexCommand(StrEnum):
     SUBSUBSECTION = "subsubsection"
     PARAGRAPH = "paragraph"
     SUBPARAGRAPH = "subparagraph"
+
+
+class TexIncludeCommand(StrEnum):
+    INPUT = "input"
+    INCLUDE = "include"
 
 
 @dataclass(frozen=True, slots=True)

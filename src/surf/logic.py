@@ -26,6 +26,8 @@ from surf.models import (
     RenderedBody,
     ScanBuffer,
     TexCommand,
+    TexIncludeCommand,
+    TexIncludeRelPath,
 )
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
@@ -39,7 +41,11 @@ _TEX_LEVEL: Mapping[TexCommand, HeadingLevel] = {
     TexCommand.SUBPARAGRAPH: HeadingLevel(7),
 }
 _TEX_COMMAND_BY_WORD: Mapping[str, TexCommand] = {command.value: command for command in TexCommand}
+_TEX_INCLUDE_BY_WORD: Mapping[str, TexIncludeCommand] = {
+    command.value: command for command in TexIncludeCommand
+}
 _TEX_CONTROL_WORD_RE = re.compile(r"^\s*\\([A-Za-z]+)")
+_TEX_UNBRACED_INCLUDE_STOP = frozenset(" \t%")
 
 
 def parse_heading_path(remainder: HeadingPathRemainder) -> HeadingPath | None:
@@ -198,6 +204,56 @@ def _parse_tex_heading_at(
         ),
         extended.last_line,
     )
+
+
+def _normalized_tex_include(raw: str) -> TexIncludeRelPath | None:
+    path = raw.strip()
+    if not path or path.startswith(("/", "~", "|")):
+        return None
+    if any(char in path for char in "\\{}|#"):
+        return None
+    segments = path.split("/")
+    if any(segment in ("", "..") for segment in segments):
+        return None
+    name = segments[-1]
+    if "." in name:
+        suffix = name.rsplit(".", 1)[1]
+        if suffix.lower() != "tex":
+            return None
+    else:
+        path = f"{path}.tex"
+    return TexIncludeRelPath(path)
+
+
+def tex_include_path(line: str) -> TexIncludeRelPath | None:
+    """Return a static \\input/\\include relative path, or None.
+
+    Comments, graphics, shell pipes, macros, absolute paths, and non-.tex
+    suffixes are not includes. A missing suffix becomes .tex.
+    """
+    if line.lstrip(" \t").startswith("%"):
+        return None
+    matched = _TEX_CONTROL_WORD_RE.match(line)
+    if matched is None:
+        return None
+    command = _TEX_INCLUDE_BY_WORD.get(matched.group(1))
+    if command is None:
+        return None
+    rest = ScanBuffer(line[matched.end() :])
+    pos = _skip_horizontal(rest, CharOffset(0))
+    if pos < len(rest) and rest[pos] == "{":
+        end = _delimited_span_end(rest, pos, Delimiter("{"), Delimiter("}"))
+        if end is None:
+            return None
+        return _normalized_tex_include(rest[pos + 1 : end - 1])
+    if command is TexIncludeCommand.INCLUDE:
+        return None
+    if pos >= len(rest):
+        return None
+    stop = int(pos)
+    while stop < len(rest) and rest[stop] not in _TEX_UNBRACED_INCLUDE_STOP:
+        stop += 1
+    return _normalized_tex_include(rest[pos:stop])
 
 
 def parse_tex_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:

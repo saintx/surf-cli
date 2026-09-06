@@ -7,6 +7,7 @@ import textwrap
 
 from surf.logic import (
     _TEX_COMMAND_BY_WORD,
+    _TEX_INCLUDE_BY_WORD,
     _TEX_LEVEL,
     extract_section,
     format_file_index,
@@ -14,8 +15,15 @@ from surf.logic import (
     parse_heading_path,
     parse_tex_headings,
     split_frontmatter,
+    tex_include_path,
 )
-from surf.models import HeadingLevel, HeadingPath, HeadingPathRemainder, TexCommand
+from surf.models import (
+    HeadingLevel,
+    HeadingPath,
+    HeadingPathRemainder,
+    TexCommand,
+    TexIncludeCommand,
+)
 
 
 def hp(remainder: str) -> HeadingPath:
@@ -355,3 +363,34 @@ def test_wrapped_title_heading_line_count() -> None:
     assert result is not None
     assert int(result.heading_line_count) == 2
     assert int(headings[0].title_end_line) == 1
+
+
+def test_tex_include_path_brace_adds_tex_suffix() -> None:
+    assert str(tex_include_path(r"\input{chapters/1_introduction}")) == (
+        "chapters/1_introduction.tex"
+    )
+    assert str(tex_include_path(r"\input{foo.tex}")) == "foo.tex"
+    assert str(tex_include_path(r"\include{bar}")) == "bar.tex"
+    assert str(tex_include_path(r"  \input{foo}")) == "foo.tex"
+    assert str(tex_include_path(r"\input {foo}")) == "foo.tex"
+    assert str(tex_include_path(r"\input foo")) == "foo.tex"
+    assert str(tex_include_path(r"\input foo.tex%comment")) == "foo.tex"
+
+
+def test_tex_include_path_skips_non_includes() -> None:
+    assert tex_include_path(r"% \input{foo}") is None
+    assert tex_include_path(r"  % \input{foo}") is None
+    assert tex_include_path(r"\includegraphics{foo}") is None
+    assert tex_include_path(r"\includegraphics{images/fig1.pdf}") is None
+    assert tex_include_path(r"\includeonly{foo}") is None
+    assert tex_include_path(r"\input{|shell}") is None
+    assert tex_include_path(r"\input{\macro}") is None
+    assert tex_include_path(r"\input{foo.pdf}") is None
+    assert tex_include_path(r"\input{foo.sty}") is None
+    assert tex_include_path(r"\input{/abs/path}") is None
+    assert tex_include_path(r"\input{../escape}") is None
+    assert tex_include_path(r"\input{}") is None
+    assert tex_include_path(r"\section{Introduction}") is None
+    assert tex_include_path(r"\include foo") is None
+    assert _TEX_INCLUDE_BY_WORD.get("input") is TexIncludeCommand.INPUT
+    assert _TEX_INCLUDE_BY_WORD.get("includegraphics") is None

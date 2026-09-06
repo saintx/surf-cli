@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from surf.adapters import read_document, resolve_file, write_output
-from surf.models import FileRef, RenderedBody
+from surf.adapters import read_document, resolve_file, resolve_tex_include, write_output
+from surf.models import FileRef, RenderedBody, TexIncludeRelPath
 
 
 def test_resolve_existing(tmp_path: Path) -> None:
@@ -39,6 +39,16 @@ def test_read_document_strips_utf8_bom(tmp_path: Path) -> None:
     path = tmp_path / "bom.tex"
     path.write_bytes(b"\xef\xbb\xbf\\section{Related Work}\n")
     assert read_document(path)[0] == r"\section{Related Work}"
+
+
+def test_resolve_tex_include_existing_and_missing(tmp_path: Path) -> None:
+    chapters = tmp_path / "chapters"
+    chapters.mkdir()
+    target = chapters / "1_introduction.tex"
+    target.write_text("\\section{Introduction}\n")
+    found = resolve_tex_include(tmp_path, TexIncludeRelPath("chapters/1_introduction.tex"))
+    assert found == target
+    assert resolve_tex_include(tmp_path, TexIncludeRelPath("chapters/missing.tex")) is None
 
 
 def test_write_output_file(tmp_path: Path) -> None:

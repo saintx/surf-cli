@@ -12,6 +12,8 @@ surf path/to/file.tex "Heading"
 
 A heading is an address: ATX display text on markdown, brace title on TeX. The return value is that section through the next heading of the same or higher level. Nested paths (`Parent#Child`) distinguish same-named headings under different parents.
 
+TeX `\input` and `\include` of `.tex` files are expanded relative to the file you name. Graphics, comments, shell pipes, and macro-constructed paths are not.
+
 ## Install
 
 Packaged as a nix flake. The `surf` CLI is installed globally via nix profile.

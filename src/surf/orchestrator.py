@@ -6,9 +6,10 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from surf import __version__
-from surf.adapters import read_document, resolve_file, write_output
+from surf.adapters import read_document, resolve_file, resolve_tex_include, write_output
 from surf.logic import (
     extract_section,
     format_file_index,
@@ -18,12 +19,14 @@ from surf.logic import (
     parse_link,
     parse_tex_headings,
     split_frontmatter,
+    tex_include_path,
 )
 from surf.models import (
     CliFailure,
     CliOptions,
     CliSuccess,
     CliTarget,
+    DocumentLines,
     ErrorMessage,
     ExitCode,
     FileRef,
@@ -123,6 +126,13 @@ def run(options: CliOptions) -> CliResult:
     except FileNotFoundError as exc:
         return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(2))
     lines = read_document(path)
+    if path.suffix.lower() == ".tex":
+        lines = _expand_tex_inputs(
+            lines,
+            root_dir=path.parent,
+            current=path,
+            seen=frozenset(),
+        )
     split = split_frontmatter(lines)
     headings = (
         parse_tex_headings(split.body)
@@ -167,6 +177,38 @@ def run(options: CliOptions) -> CliResult:
         parts.append("\n".join(split.frontmatter))
     parts.append("\n".join(section_lines))
     return CliSuccess(body=RenderedBody("\n".join(parts).rstrip()))
+
+
+def _expand_tex_inputs(
+    lines: DocumentLines,
+    *,
+    root_dir: Path,
+    current: Path,
+    seen: frozenset[Path],
+) -> DocumentLines:
+    resolved = current.resolve()
+    if resolved in seen:
+        return ()
+    loaded = seen | {resolved}
+    out: list[str] = []
+    for line in lines:
+        rel = tex_include_path(line)
+        if rel is None:
+            out.append(line)
+            continue
+        child = resolve_tex_include(root_dir, rel)
+        if child is None:
+            out.append(line)
+            continue
+        out.extend(
+            _expand_tex_inputs(
+                read_document(child),
+                root_dir=root_dir,
+                current=child,
+                seen=loaded,
+            )
+        )
+    return tuple(out)
 
 
 def run_argv(argv: Sequence[str] | None = None) -> CliResult:
