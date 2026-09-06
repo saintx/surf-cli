@@ -12,6 +12,8 @@ surf path/to/file.tex "Heading"
 
 A heading is an address: ATX display text on markdown, brace title on TeX, or the TeX `abstract` environment (addressed as `abstract`). The return value is that section through the next heading of the same or higher level. Nested paths (`Parent#Child`) distinguish same-named headings under different parents.
 
+`--level` is 1 at the top of the heading tree. On markdown that is `#`. On TeX it is the shallowest command in the file, so `--level 1` is `\section` in an article.
+
 TeX `\input` and `\include` of `.tex` files are expanded relative to the file you name. Graphics, comments, shell pipes, and macro-constructed paths are not.
 
 If the file has no headings, surf prints that it has no structural index, with the file's line and byte counts. It does not dump the body.

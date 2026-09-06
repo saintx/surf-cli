@@ -14,6 +14,7 @@ from surf.logic import (
     format_heading_list,
     parse_heading_path,
     parse_tex_headings,
+    relative_heading_levels,
     split_frontmatter,
     tex_include_path,
 )
@@ -21,6 +22,9 @@ from surf.models import (
     HeadingLevel,
     HeadingPath,
     HeadingPathRemainder,
+    HeadingRecord,
+    HeadingText,
+    LineIndex,
     TexCommand,
     TexEnvironment,
     TexIncludeCommand,
@@ -43,19 +47,29 @@ def test_parse_section_and_subsection_levels() -> None:
         \subsection{Child}
         """)
     levels = {str(record.text): int(record.level) for record in parse_tex_headings(lines)}
-    assert levels["What this corpus is"] == 3
-    assert levels["Child"] == 4
+    assert levels["What this corpus is"] == 1
+    assert levels["Child"] == 2
 
 
-def test_parse_paragraph_run_in_level_six() -> None:
+def test_parse_paragraph_run_in_is_a_heading() -> None:
     lines = [r"\paragraph{Run-in} body on the same line"]
     headings = parse_tex_headings(lines)
     assert len(headings) == 1
-    assert int(headings[0].level) == 6
+    assert int(headings[0].level) == 1
     assert str(headings[0].text) == "Run-in"
     result = extract_section(lines, hp("Run-in"), headings=headings)
     assert result is not None
     assert result.lines[0] == r"\paragraph{Run-in} body on the same line"
+
+
+def test_paragraph_stays_below_section_after_relative_shift() -> None:
+    lines = tex_lines(r"""
+        \section{Parent}
+        \paragraph{Run-in}
+        """)
+    levels = {str(record.text): int(record.level) for record in parse_tex_headings(lines)}
+    assert levels["Parent"] == 1
+    assert levels["Run-in"] == 4
 
 
 def test_parse_starred_section_and_subsection() -> None:
@@ -66,8 +80,8 @@ def test_parse_starred_section_and_subsection() -> None:
         """)
     headings = parse_tex_headings(lines)
     assert [(int(record.level), str(record.text)) for record in headings] == [
-        (3, "Starred"),
-        (4, "Also starred"),
+        (1, "Starred"),
+        (2, "Also starred"),
     ]
     result = extract_section(lines, hp("Starred"), headings=headings)
     assert result is not None
@@ -190,16 +204,16 @@ def test_extract_level_filter_hits_section_not_subsection() -> None:
         subsection body
         """)
     headings = parse_tex_headings(lines)
-    section = extract_section(lines, hp("Named"), level_filter=HeadingLevel(3), headings=headings)
+    section = extract_section(lines, hp("Named"), level_filter=HeadingLevel(1), headings=headings)
     assert section is not None
-    assert int(section.level) == 3
+    assert int(section.level) == 1
     assert section.lines[0] == r"\section{Named}"
     assert "section body" in "\n".join(section.lines)
     subsection = extract_section(
-        lines, hp("Named"), level_filter=HeadingLevel(4), headings=headings
+        lines, hp("Named"), level_filter=HeadingLevel(2), headings=headings
     )
     assert subsection is not None
-    assert int(subsection.level) == 4
+    assert int(subsection.level) == 2
     assert subsection.lines[0] == r"\subsection{Named}"
 
 
@@ -210,8 +224,8 @@ def test_format_heading_list_tex_indent() -> None:
         """)
     text = format_heading_list(lines, headings=parse_tex_headings(lines))
     assert text.splitlines() == [
-        "    - What this corpus is",
-        "      - Child",
+        "- What this corpus is",
+        "  - Child",
     ]
 
 
@@ -226,7 +240,7 @@ def test_format_file_index_tex_equals_heading_list() -> None:
     listed = format_heading_list(lines, headings=headings)
     assert split.frontmatter is None
     assert format_file_index(split, headings=headings) == listed
-    assert listed == "    - What this corpus is\n      - Child"
+    assert listed == "- What this corpus is\n  - Child"
 
 
 def test_parse_subsubsection_level_five_not_subsection() -> None:
@@ -236,8 +250,8 @@ def test_parse_subsubsection_level_five_not_subsection() -> None:
         """)
     records = parse_tex_headings(lines)
     levels = {str(record.text): int(record.level) for record in records}
-    assert levels["Sub"] == 4
-    assert levels["Subsub"] == 5
+    assert levels["Sub"] == 1
+    assert levels["Subsub"] == 2
     assert [str(record.text) for record in records] == ["Sub", "Subsub"]
 
 
@@ -246,12 +260,22 @@ def test_sectioning_is_not_a_heading() -> None:
     assert [str(record.text) for record in parse_tex_headings(lines)] == ["Real"]
 
 
-def test_parse_subparagraph_level_seven() -> None:
+def test_parse_subparagraph_is_a_heading() -> None:
     lines = [r"\subparagraph{Tiny}"]
     headings = parse_tex_headings(lines)
     assert len(headings) == 1
-    assert int(headings[0].level) == 7
+    assert int(headings[0].level) == 1
     assert str(headings[0].text) == "Tiny"
+
+
+def test_part_and_section_keep_rank_gap() -> None:
+    lines = tex_lines(r"""
+        \part{Book}
+        \section{Chapter-like}
+        """)
+    levels = {str(record.text): int(record.level) for record in parse_tex_headings(lines)}
+    assert levels["Book"] == 1
+    assert levels["Chapter-like"] == 3
 
 
 def test_parse_bom_prefixed_section_is_a_heading() -> None:
@@ -321,6 +345,25 @@ def test_parse_multiline_paragraph_title() -> None:
 
 def test_unclosed_title_at_eof_is_not_a_heading() -> None:
     assert parse_tex_headings([r"\section{Never closed"]) == ()
+
+
+def test_relative_heading_levels_shifts_min_to_one() -> None:
+    records = (
+        HeadingRecord(
+            level=HeadingLevel(3),
+            line_index=LineIndex(0),
+            title_end_line=LineIndex(0),
+            text=HeadingText("S"),
+        ),
+        HeadingRecord(
+            level=HeadingLevel(4),
+            line_index=LineIndex(1),
+            title_end_line=LineIndex(1),
+            text=HeadingText("Sub"),
+        ),
+    )
+    shifted = relative_heading_levels(records)
+    assert [int(record.level) for record in shifted] == [1, 2]
 
 
 def test_tex_command_level_map() -> None:
@@ -408,13 +451,13 @@ def test_parse_abstract_environment_is_section_rank_heading() -> None:
         """)
     headings = parse_tex_headings(lines)
     assert [(int(record.level), str(record.text)) for record in headings] == [
-        (3, "abstract"),
-        (3, "Introduction"),
+        (1, "abstract"),
+        (1, "Introduction"),
     ]
     listed = format_heading_list(lines, headings=headings)
     assert listed.splitlines() == [
-        "    - abstract",
-        "    - Introduction",
+        "- abstract",
+        "- Introduction",
     ]
     result = extract_section(lines, hp("abstract"), headings=headings)
     assert result is not None

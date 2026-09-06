@@ -66,7 +66,7 @@ def test_tex_extract_section_is_sub_millisecond() -> None:
     result = extract_section(lines, heading, headings=headings)
     dt_ns = time.perf_counter_ns() - t0
     assert result is not None
-    assert int(result.level) == 4
+    assert int(result.level) == 2
     text = "\n".join(result.lines)
     assert "alpha body line" in text
     assert "Beta" not in text

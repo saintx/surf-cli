@@ -286,6 +286,32 @@ def tex_include_path(line: str) -> TexIncludeRelPath | None:
     return _normalized_tex_include(rest[pos:stop])
 
 
+def relative_heading_levels(
+    headings: tuple[HeadingRecord, ...],
+) -> tuple[HeadingRecord, ...]:
+    """Shift ranks so the shallowest heading in the file is level 1.
+
+    LaTeX command ranks stay on the 1-7 map (part=1 ... subparagraph=7).
+    An article whose top command is \\section then lists at --level 1, matching
+    markdown's top-of-tree numbering. Gaps are preserved.
+    """
+    if not headings:
+        return headings
+    origin = min(int(record.level) for record in headings)
+    if origin <= 1:
+        return headings
+    delta = origin - 1
+    return tuple(
+        HeadingRecord(
+            level=HeadingLevel(int(record.level) - delta),
+            line_index=record.line_index,
+            title_end_line=record.title_end_line,
+            text=record.text,
+        )
+        for record in headings
+    )
+
+
 def parse_tex_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
     records: list[HeadingRecord] = []
     i = LineIndex(0)
@@ -297,7 +323,7 @@ def parse_tex_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
         record, consumed_through = parsed
         records.append(record)
         i = LineIndex(consumed_through + 1)
-    return tuple(records)
+    return relative_heading_levels(tuple(records))
 
 
 def split_frontmatter(lines: Sequence[str]) -> FrontmatterSplit:

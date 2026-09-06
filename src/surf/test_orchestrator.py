@@ -159,9 +159,9 @@ def test_parser_positional() -> None:
 def test_tex_list_headings(tex_file: Path) -> None:
     output = rendered(["--list", str(tex_file)])
     lines = output.splitlines()
-    assert "    - What this corpus is" in lines
-    assert "      - A subsection" in lines
-    assert "    - Sibling" in lines
+    assert "- What this corpus is" in lines
+    assert "  - A subsection" in lines
+    assert "- Sibling" in lines
     assert "corpus body" not in output
 
 
@@ -183,8 +183,8 @@ def test_tex_missing_heading(tex_file: Path) -> None:
 def test_tex_no_heading_returns_index(tex_file: Path) -> None:
     output = rendered([str(tex_file)])
     assert output != ""
-    assert "    - What this corpus is" in output.splitlines()
-    assert "      - A subsection" in output.splitlines()
+    assert "- What this corpus is" in output.splitlines()
+    assert "  - A subsection" in output.splitlines()
     assert "corpus body" not in output
     assert "sibling body" not in output
 
@@ -209,10 +209,18 @@ def test_tex_bom_prefixed_list_and_extract(tmp_path: Path) -> None:
 
 
 def test_tex_list_level_filters_to_sections(tex_file: Path) -> None:
-    output = rendered(["--list", "--level", "3", str(tex_file)])
+    output = rendered(["--list", "--level", "1", str(tex_file)])
     assert "What this corpus is" in output
     assert "Sibling" in output
     assert "A subsection" not in output
+
+
+def test_tex_extract_level_1_hits_section_not_subsection(tex_file: Path) -> None:
+    output = rendered(["--level", "1", str(tex_file), "What this corpus is"])
+    assert "corpus body" in output
+    assert "sub body" in output
+    missing = run_argv(["--level", "2", str(tex_file), "What this corpus is"])
+    assert isinstance(missing, CliFailure)
 
 
 def test_tex_no_heading_drops_wrapped_title_lines(tmp_path: Path) -> None:
@@ -242,10 +250,10 @@ def test_tex_input_master_lists_and_extracts_chapter_headings(tmp_path: Path) ->
     master = tmp_path / "main.tex"
     master.write_text("\\input{chapters/1_introduction}\n\\input{chapters/2_related_work}\n")
     listed = rendered(["--list", str(master)])
-    assert "    - Introduction" in listed.splitlines()
-    assert "    - Related Work" in listed.splitlines()
+    assert "- Introduction" in listed.splitlines()
+    assert "- Related Work" in listed.splitlines()
     index = rendered([str(master)])
-    assert "    - Introduction" in index.splitlines()
+    assert "- Introduction" in index.splitlines()
     extracted = rendered([str(master), "Introduction"])
     assert "intro body" in extracted
     assert r"\section{Introduction}" in extracted
@@ -265,8 +273,8 @@ def test_tex_nested_input_resolves_from_master_dir(tmp_path: Path) -> None:
     master = tmp_path / "main.tex"
     master.write_text("\\input{chapters/intro}\n")
     listed = rendered(["--list", str(master)])
-    assert "    - Introduction" in listed.splitlines()
-    assert "      - Stats" in listed.splitlines()
+    assert "- Introduction" in listed.splitlines()
+    assert "  - Stats" in listed.splitlines()
     extracted = rendered([str(master), "Introduction#Stats"])
     assert "stat body" in extracted
     assert "intro body" not in extracted
@@ -286,14 +294,14 @@ def test_tex_includegraphics_is_not_expanded(tmp_path: Path) -> None:
     master = tmp_path / "main.tex"
     master.write_text("\\includegraphics{fig}\n\\section{Here}\n")
     listed = rendered(["--list", str(master)])
-    assert listed.splitlines() == ["    - Here"]
+    assert listed.splitlines() == ["- Here"]
 
 
 def test_tex_missing_input_keeps_other_headings(tmp_path: Path) -> None:
     master = tmp_path / "main.tex"
     master.write_text("\\input{chapters/missing}\n\\section{Here}\n")
     listed = rendered(["--list", str(master)])
-    assert listed.splitlines() == ["    - Here"]
+    assert listed.splitlines() == ["- Here"]
 
 
 def test_tex_input_cycle_does_not_hang(tmp_path: Path) -> None:
@@ -376,8 +384,8 @@ def test_tex_abstract_list_and_extract(tmp_path: Path) -> None:
     )
     listed = rendered(["--list", str(path)])
     assert listed.splitlines() == [
-        "    - abstract",
-        "    - Introduction",
+        "- abstract",
+        "- Introduction",
     ]
     extracted = rendered([str(path), "abstract"])
     assert r"\begin{abstract}" in extracted
@@ -391,7 +399,7 @@ def test_tex_abstract_via_input(tmp_path: Path) -> None:
     master = tmp_path / "main.tex"
     master.write_text("\\begin{abstract}\n\\input{00abstract}\n\\end{abstract}\n")
     listed = rendered(["--list", str(master)])
-    assert listed.splitlines() == ["    - abstract"]
+    assert listed.splitlines() == ["- abstract"]
     extracted = rendered([str(master), "Abstract"])
     assert "spliced abstract body" in extracted
     assert r"\begin{abstract}" in extracted
