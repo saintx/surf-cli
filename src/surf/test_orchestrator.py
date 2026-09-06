@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from surf import __version__, __version_tag__
+from surf import __version__
 from surf.models import CliFailure
 from surf.orchestrator import build_parser, main, run_argv
 
@@ -64,8 +64,7 @@ def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
         parser.parse_args(["--version"])
     assert exc_info.value.code == 0
     captured = capsys.readouterr()
-    assert captured.out.strip() == __version_tag__
-    assert __version_tag__ == f"surf-v{__version__}"
+    assert captured.out.strip() == f"surf {__version__}"
 
 
 def test_extract_details(sample_file: Path) -> None:

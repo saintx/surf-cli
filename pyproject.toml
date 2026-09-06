@@ -7,7 +7,15 @@ name = "surf-cli"
 version = "0.3.0"
 description = "Extract markdown sections by heading with Obsidian link support"
 readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Alexander R. Saint Croix", email = "alex@saintx.us" }]
 requires-python = ">=3.12"
+
+[project.urls]
+Homepage = "https://github.com/saintx/surf-cli"
+Repository = "https://github.com/saintx/surf-cli"
+Issues = "https://github.com/saintx/surf-cli/issues"
+Author = "https://github.com/saintx"
 
 [project.scripts]
 surf = "surf.orchestrator:main"

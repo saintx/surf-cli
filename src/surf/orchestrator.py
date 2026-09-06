@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from surf import __version_tag__
+from surf import __version__
 from surf.adapters import read_document, resolve_file, write_output
 from surf.logic import (
     extract_section,
@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="surf",
         description="Extract markdown sections by heading with Obsidian link support.",
     )
-    parser.add_argument("--version", action="version", version=__version_tag__)
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "target",
         nargs="?",
