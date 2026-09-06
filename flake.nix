@@ -55,7 +55,7 @@
 
         surf = pythonPkgs.buildPythonApplication {
           pname = "surf";
-          version = "0.6.4";
+          version = "0.7.0";
           src = cliSrc;
           pyproject = true;
 
