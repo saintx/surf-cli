@@ -6,6 +6,7 @@ from __future__ import annotations
 import textwrap
 
 from surf.logic import (
+    _TEX_COMMAND_BY_WORD,
     _TEX_LEVEL,
     extract_section,
     format_file_index,
@@ -314,13 +315,16 @@ def test_unclosed_title_at_eof_is_not_a_heading() -> None:
 
 
 def test_tex_command_level_map() -> None:
-    assert _TEX_LEVEL[TexCommand("part")] == HeadingLevel(1)
-    assert _TEX_LEVEL[TexCommand("chapter")] == HeadingLevel(2)
-    assert _TEX_LEVEL[TexCommand("section")] == HeadingLevel(3)
-    assert _TEX_LEVEL[TexCommand("subsection")] == HeadingLevel(4)
-    assert _TEX_LEVEL[TexCommand("subsubsection")] == HeadingLevel(5)
-    assert _TEX_LEVEL[TexCommand("paragraph")] == HeadingLevel(6)
-    assert _TEX_LEVEL[TexCommand("subparagraph")] == HeadingLevel(7)
+    assert _TEX_LEVEL[TexCommand.PART] == HeadingLevel(1)
+    assert _TEX_LEVEL[TexCommand.CHAPTER] == HeadingLevel(2)
+    assert _TEX_LEVEL[TexCommand.SECTION] == HeadingLevel(3)
+    assert _TEX_LEVEL[TexCommand.SUBSECTION] == HeadingLevel(4)
+    assert _TEX_LEVEL[TexCommand.SUBSUBSECTION] == HeadingLevel(5)
+    assert _TEX_LEVEL[TexCommand.PARAGRAPH] == HeadingLevel(6)
+    assert _TEX_LEVEL[TexCommand.SUBPARAGRAPH] == HeadingLevel(7)
+    assert _TEX_COMMAND_BY_WORD.get("section") is TexCommand.SECTION
+    assert _TEX_COMMAND_BY_WORD.get("begin") is None
+    assert _TEX_COMMAND_BY_WORD.get("sectioning") is None
 
 
 def test_parse_space_between_optional_and_long_title() -> None:

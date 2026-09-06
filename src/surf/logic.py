@@ -30,19 +30,16 @@ from surf.models import (
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
 _TEX_LEVEL: Mapping[TexCommand, HeadingLevel] = {
-    TexCommand("part"): HeadingLevel(1),
-    TexCommand("chapter"): HeadingLevel(2),
-    TexCommand("section"): HeadingLevel(3),
-    TexCommand("subsection"): HeadingLevel(4),
-    TexCommand("subsubsection"): HeadingLevel(5),
-    TexCommand("paragraph"): HeadingLevel(6),
-    TexCommand("subparagraph"): HeadingLevel(7),
+    TexCommand.PART: HeadingLevel(1),
+    TexCommand.CHAPTER: HeadingLevel(2),
+    TexCommand.SECTION: HeadingLevel(3),
+    TexCommand.SUBSECTION: HeadingLevel(4),
+    TexCommand.SUBSUBSECTION: HeadingLevel(5),
+    TexCommand.PARAGRAPH: HeadingLevel(6),
+    TexCommand.SUBPARAGRAPH: HeadingLevel(7),
 }
-_TEX_COMMAND_RE = re.compile(
-    r"^\s*\\("
-    r"subparagraph|subsubsection|subsection|paragraph|chapter|section|part"
-    r")(?![A-Za-z])"
-)
+_TEX_COMMAND_BY_WORD: Mapping[str, TexCommand] = {command.value: command for command in TexCommand}
+_TEX_CONTROL_WORD_RE = re.compile(r"^\s*\\([A-Za-z]+)")
 
 
 def parse_heading_path(remainder: HeadingPathRemainder) -> HeadingPath | None:
@@ -163,8 +160,11 @@ def _parse_tex_heading_at(
     line = lines[line_index]
     if line_index == 0:
         line = line.lstrip("\ufeff")
-    m = _TEX_COMMAND_RE.match(line)
+    m = _TEX_CONTROL_WORD_RE.match(line)
     if m is None:
+        return None
+    command = _TEX_COMMAND_BY_WORD.get(m.group(1))
+    if command is None:
         return None
     rest = ScanBuffer(line[m.end() :])
     pos = CharOffset(0)
@@ -189,7 +189,6 @@ def _parse_tex_heading_at(
     title = re.sub(r"\s+", " ", rest[pos + 1 : brace_end - 1]).strip()
     if not title:
         return None
-    command = TexCommand(m.group(1))
     return (
         HeadingRecord(
             level=_TEX_LEVEL[command],

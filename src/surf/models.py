@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import NewType
 
 HeadingText = NewType("HeadingText", str)
@@ -13,7 +14,6 @@ LineIndex = NewType("LineIndex", int)
 ScanBuffer = NewType("ScanBuffer", str)
 CharOffset = NewType("CharOffset", int)
 Delimiter = NewType("Delimiter", str)
-TexCommand = NewType("TexCommand", str)
 HeadingLineCount = NewType("HeadingLineCount", int)
 CliTarget = NewType("CliTarget", str)
 HeadingPathRemainder = NewType("HeadingPathRemainder", str)
@@ -22,6 +22,16 @@ ErrorMessage = NewType("ErrorMessage", str)
 ExitCode = NewType("ExitCode", int)
 
 type DocumentLines = tuple[str, ...]
+
+
+class TexCommand(StrEnum):
+    PART = "part"
+    CHAPTER = "chapter"
+    SECTION = "section"
+    SUBSECTION = "subsection"
+    SUBSUBSECTION = "subsubsection"
+    PARAGRAPH = "paragraph"
+    SUBPARAGRAPH = "subparagraph"
 
 
 @dataclass(frozen=True, slots=True)
