@@ -10,7 +10,7 @@ surf -l path/to/file.tex
 surf path/to/file.tex "Heading"
 ```
 
-A heading is an address. The return value is that section through the next heading of the same or higher level. Nested paths (`Parent#Child`) distinguish same-named headings under different parents, through ATX H1–H6.
+A heading is an address: ATX display text on markdown, brace title on TeX. The return value is that section through the next heading of the same or higher level. Nested paths (`Parent#Child`) distinguish same-named headings under different parents.
 
 ## Install
 
