@@ -388,10 +388,11 @@ def test_relative_heading_levels_empty() -> None:
     assert relative_heading_levels(()) == ()
 
 
-def test_article_heading_list_level_1_not_3() -> None:
+def test_article_heading_list_level_is_max_depth() -> None:
     lines = tex_lines(r"""
         \section{Introduction}
         \subsection{Child}
+        \subsubsection{Tiny}
         \section{Related Work}
         """)
     headings = parse_tex_headings(lines)
@@ -404,9 +405,18 @@ def test_article_heading_list_level_1_not_3() -> None:
     assert format_heading_list(
         lines, headings=headings, level_filter=HeadingLevel(2)
     ).splitlines() == [
+        "- Introduction",
         "  - Child",
+        "- Related Work",
     ]
-    assert format_heading_list(lines, headings=headings, level_filter=HeadingLevel(3)) == ""
+    assert format_heading_list(
+        lines, headings=headings, level_filter=HeadingLevel(3)
+    ).splitlines() == [
+        "- Introduction",
+        "  - Child",
+        "    - Tiny",
+        "- Related Work",
+    ]
 
 
 def test_tex_command_level_map() -> None:

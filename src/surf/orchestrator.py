@@ -87,7 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="list_headings",
         help="List all headings in the file",
     )
-    parser.add_argument("--level", type=int, default=None, help="Only match headings at this level")
+    parser.add_argument(
+        "--level",
+        type=int,
+        default=None,
+        help="Max heading level when listing (1..N); exact level when extracting",
+    )
     parser.add_argument(
         "--no-heading", action="store_true", help="Exclude the heading line from output"
     )

@@ -343,7 +343,11 @@ def extract_section(
     level_filter: HeadingLevel | None = None,
     headings: tuple[HeadingRecord, ...] | None = None,
 ) -> ExtractedSection | None:
-    """Extract by heading path. Same containment walk as the pre-split module."""
+    """Extract by heading path. Same containment walk as the pre-split module.
+
+    level_filter is an exact rank, so same-named headings at different
+    levels stay distinguishable.
+    """
     if headings is None:
         headings = parse_headings(lines)
     segments = heading_path.segments
@@ -406,9 +410,10 @@ def format_heading_list(
     headings: tuple[HeadingRecord, ...] | None = None,
     level_filter: HeadingLevel | None = None,
 ) -> RenderedBody:
+    """List headings. level_filter is a maximum rank (1 through N)."""
     records = parse_headings(lines) if headings is None else headings
     if level_filter is not None:
-        records = tuple(record for record in records if record.level == level_filter)
+        records = tuple(record for record in records if record.level <= level_filter)
     out: list[str] = []
     for record in records:
         indent = "  " * (int(record.level) - 1)

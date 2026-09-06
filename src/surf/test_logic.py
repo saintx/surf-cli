@@ -272,6 +272,17 @@ def test_format_heading_list() -> None:
     assert "  - Details" in text
 
 
+def test_format_heading_list_level_is_max_depth() -> None:
+    split = split_frontmatter(SAMPLE_MD.splitlines())
+    text = format_heading_list(split.body, level_filter=HeadingLevel(2))
+    lines = text.splitlines()
+    assert "- Introduction" in lines
+    assert "  - Details" in lines
+    assert "  - Another Section" in lines
+    assert "- Conclusion" in lines
+    assert "Sub-details" not in text
+
+
 def test_format_file_index_yaml_and_headings() -> None:
     split = split_frontmatter(SAMPLE_MD.splitlines())
     text = format_file_index(split)

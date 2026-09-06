@@ -107,10 +107,12 @@ def test_no_heading_does_not_dump(sample_file: Path) -> None:
     assert "intro" not in output.splitlines()
 
 
-def test_list_level_filters_markdown(sample_file: Path) -> None:
-    output = rendered(["--list", "--level", "2", str(sample_file)])
-    assert "Details" in output
-    assert "Introduction" not in output
+def test_list_level_filters_markdown_as_max_depth(tmp_path: Path) -> None:
+    path = tmp_path / "sample.md"
+    path.write_text("# Introduction\n\n## Details\n\n### Sub-details\n")
+    output = rendered(["--list", "--level", "2", str(path)])
+    assert output.splitlines() == ["- Introduction", "  - Details"]
+    assert "Sub-details" not in output
 
 
 def test_list_level_1_markdown_is_hash_not_hashhash(sample_file: Path) -> None:
@@ -249,42 +251,47 @@ def test_tex_article_level_1_lists_section_not_empty(tmp_path: Path) -> None:
     assert indexed.splitlines() == ["- Introduction", "- Related Work"]
 
 
-def test_tex_article_level_3_is_not_section(tmp_path: Path) -> None:
-    """Lock against reverting to the LaTeX 1-7 map where \\section is rank 3."""
+def test_tex_article_list_level_is_max_depth_extract_is_exact(tmp_path: Path) -> None:
     path = tmp_path / "main.tex"
     path.write_text(
         "\\section{Introduction}\nintro\n"
         "\\subsection{Child}\nchild\n"
+        "\\subsubsection{Tiny}\ntiny\n"
         "\\section{Related Work}\nrelated\n"
     )
-    listed = rendered(["--list", "--level", "3", str(path)])
-    assert listed == ""
-    assert "Introduction" not in listed
+    assert rendered(["--list", "--level", "2", str(path)]).splitlines() == [
+        "- Introduction",
+        "  - Child",
+        "- Related Work",
+    ]
+    assert rendered(["--list", "--level", "3", str(path)]).splitlines() == [
+        "- Introduction",
+        "  - Child",
+        "    - Tiny",
+        "- Related Work",
+    ]
     extracted = run_argv(["--level", "3", str(path), "Introduction"])
     assert isinstance(extracted, CliFailure)
     assert extracted.exit_code == 1
+    child = rendered(["--level", "2", str(path), "Child"])
+    assert "child" in child
+    assert "tiny" in child
+    assert r"\section{Related Work}" not in child
 
 
-def test_tex_article_level_2_lists_subsection(tmp_path: Path) -> None:
-    path = tmp_path / "main.tex"
-    path.write_text(
-        "\\section{Introduction}\nintro\n"
-        "\\subsection{Child}\nchild\n"
-        "\\section{Related Work}\nrelated\n"
-    )
-    listed = rendered(["--list", "--level", "2", str(path)])
-    assert listed.splitlines() == ["  - Child"]
-    extracted = rendered(["--level", "2", str(path), "Child"])
-    assert "child" in extracted
-    assert r"\section{Related Work}" not in extracted
-
-
-def test_tex_book_level_1_is_chapter_not_section(tmp_path: Path) -> None:
+def test_tex_book_list_level_is_max_depth(tmp_path: Path) -> None:
     path = tmp_path / "book.tex"
     path.write_text("\\chapter{One}\n\\section{Two}\n\\subsection{Three}\n")
     assert rendered(["--list", "--level", "1", str(path)]).splitlines() == ["- One"]
-    assert rendered(["--list", "--level", "2", str(path)]).splitlines() == ["  - Two"]
-    assert rendered(["--list", "--level", "3", str(path)]).splitlines() == ["    - Three"]
+    assert rendered(["--list", "--level", "2", str(path)]).splitlines() == [
+        "- One",
+        "  - Two",
+    ]
+    assert rendered(["--list", "--level", "3", str(path)]).splitlines() == [
+        "- One",
+        "  - Two",
+        "    - Three",
+    ]
 
 
 def test_tex_input_master_level_1_lists_chapter_sections(tmp_path: Path) -> None:
@@ -298,7 +305,11 @@ def test_tex_input_master_level_1_lists_chapter_sections(tmp_path: Path) -> None
     master.write_text("\\input{chapters/1_introduction}\n\\input{chapters/2_related_work}\n")
     listed = rendered(["--list", "--level", "1", str(master)])
     assert listed.splitlines() == ["- Introduction", "- Related Work"]
-    assert rendered(["--list", "--level", "3", str(master)]) == ""
+    assert rendered(["--list", "--level", "2", str(master)]).splitlines() == [
+        "- Introduction",
+        "- Related Work",
+        "  - Prior",
+    ]
     extracted = rendered(["--level", "1", str(master), "Introduction"])
     assert "intro body" in extracted
     assert "related body" not in extracted
