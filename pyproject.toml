@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "surf-cli"
-version = "0.6.3"
+version = "0.6.4"
 description = "Extract markdown, TeX, or PDF outline sections by heading with Obsidian link support"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Alexander R. Saint Croix", email = "alex@saintx.us" }]
 requires-python = ">=3.12"
-dependencies = ["pypdf>=5.0.0"]
+dependencies = ["pypdf>=6.17.0"]
 
 [project.urls]
 Homepage = "https://github.com/saintx/surf-cli"

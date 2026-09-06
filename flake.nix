@@ -10,18 +10,31 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        pythonPkgs = pkgs.python312Packages;
+        pypdf = pythonPkgs.buildPythonPackage rec {
+          pname = "pypdf";
+          version = "6.17.0";
+          pyproject = true;
+          src = pkgs.fetchPypi {
+            inherit pname version;
+            hash = "sha256-CXrQ2Cl3jsW2Fa6qXG2ktsrEmS+P2AtW+YoajABlc7s=";
+          };
+          build-system = [ pythonPkgs.flit-core ];
+          doCheck = false;
+          pythonImportsCheck = [ "pypdf" ];
+        };
       in {
-        packages.default = pkgs.python312Packages.buildPythonApplication {
+        packages.default = pythonPkgs.buildPythonApplication {
           pname = "surf";
-          version = "0.6.3";
+          version = "0.6.4";
           src = ./.;
           pyproject = true;
 
-          build-system = with pkgs.python312Packages; [
+          build-system = with pythonPkgs; [
             hatchling
           ];
 
-          dependencies = with pkgs.python312Packages; [ pypdf ];
+          dependencies = [ pypdf ];
 
           doCheck = false;
         };

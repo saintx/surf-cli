@@ -380,7 +380,7 @@ wheels = [
 
 [[package]]
 name = "surf-cli"
-version = "0.6.3"
+version = "0.6.4"
 source = { editable = "." }
 dependencies = [
     { name = "pypdf" },
@@ -397,7 +397,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pypdf", specifier = ">=5.0.0" }]
+requires-dist = [{ name = "pypdf", specifier = ">=6.17.0" }]
 
 [package.metadata.requires-dev]
 dev = [
