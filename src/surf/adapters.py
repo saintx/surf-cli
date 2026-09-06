@@ -108,14 +108,54 @@ def _walk_outline(
                 yield _outline_record(reader, item, level=level)
 
 
+def _open_reader(path: Path) -> PdfReader:
+    reader = PdfReader(path)
+    if reader.is_encrypted:
+        raise PdfIngestError(f"could not read PDF: {path}")
+    return reader
+
+
+def _outline_from_reader(reader: PdfReader) -> tuple[OutlineRecord, ...]:
+    outline_root = cast(Iterable[PypdfOutlineItem], reader.outline)
+    return tuple(_walk_outline(reader, outline_root, level=OutlineLevel(1)))
+
+
+def _pages_from_reader(
+    reader: PdfReader, start: PageIndex, end: PageIndex | None
+) -> tuple[PageText, ...]:
+    pages = reader.pages
+    start_i = int(start)
+    end_i = len(pages) if end is None else int(end)
+    start_i = max(0, start_i)
+    end_i = min(len(pages), end_i)
+    if start_i >= end_i:
+        return ()
+    return tuple((pages[i].extract_text() or "") for i in range(start_i, end_i))
+
+
+def read_pdf_outline(path: Path) -> tuple[OutlineRecord, ...]:
+    try:
+        return _outline_from_reader(_open_reader(path))
+    except PdfIngestError:
+        raise
+    except Exception as exc:
+        raise PdfIngestError(f"could not read PDF: {path}") from exc
+
+
+def read_pdf_pages(path: Path, start: PageIndex, end: PageIndex | None) -> tuple[PageText, ...]:
+    try:
+        return _pages_from_reader(_open_reader(path), start, end)
+    except PdfIngestError:
+        raise
+    except Exception as exc:
+        raise PdfIngestError(f"could not read PDF: {path}") from exc
+
+
 def read_pdf(path: Path) -> PdfDocument:
     try:
-        reader = PdfReader(path)
-        if reader.is_encrypted:
-            raise PdfIngestError(f"could not read PDF: {path}")
-        outline_root = cast(Iterable[PypdfOutlineItem], reader.outline)
-        outline = tuple(_walk_outline(reader, outline_root, level=OutlineLevel(1)))
-        pages: tuple[PageText, ...] = tuple((page.extract_text() or "") for page in reader.pages)
+        reader = _open_reader(path)
+        outline = _outline_from_reader(reader)
+        pages = _pages_from_reader(reader, PageIndex(0), None)
         return PdfDocument(outline=outline, pages=pages)
     except PdfIngestError:
         raise

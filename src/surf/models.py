@@ -84,6 +84,15 @@ class PdfDocument:
 
 
 @dataclass(frozen=True, slots=True)
+class OutlinePageSpan:
+    """Dest-to-next-dest page range. start_page None means found but no dest."""
+
+    level: OutlineLevel
+    start_page: PageIndex | None
+    end_page: PageIndex | None
+
+
+@dataclass(frozen=True, slots=True)
 class ParsedLink:
     file_ref: FileRef | None
     heading_path: HeadingPath | None

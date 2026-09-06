@@ -13,18 +13,19 @@ from surf.adapters import (
     PdfIngestError,
     document_byte_count,
     read_document,
-    read_pdf,
+    read_pdf_outline,
+    read_pdf_pages,
     resolve_file,
     resolve_tex_include,
     write_output,
 )
 from surf.logic import (
-    extract_outline_section,
     extract_section,
     format_empty_index,
     format_file_index,
     format_heading_list,
     format_outline_list,
+    match_outline_span,
     parse_heading_path,
     parse_headings,
     parse_link,
@@ -134,28 +135,28 @@ def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
 
 def _run_pdf(path: Path, options: CliOptions) -> CliResult:
     try:
-        document = read_pdf(path)
+        outline = read_pdf_outline(path)
     except PdfIngestError as exc:
         return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(1))
     outline_level = OutlineLevel(options.level_filter) if options.level_filter is not None else None
-    if options.list_headings:
-        return CliSuccess(body=format_outline_list(document.outline, level_filter=outline_level))
     if options.frontmatter_only:
         return CliSuccess(body=RenderedBody(""))
-    if options.heading_path is None:
-        return CliSuccess(body=format_outline_list(document.outline, level_filter=outline_level))
-    extracted = extract_outline_section(
-        document,
-        options.heading_path,
-        level_filter=outline_level,
-    )
-    if extracted is None:
+    if options.list_headings or options.heading_path is None:
+        return CliSuccess(body=format_outline_list(outline, level_filter=outline_level))
+    span = match_outline_span(outline, options.heading_path, level_filter=outline_level)
+    if span is None:
         remainder = "#".join(str(seg) for seg in options.heading_path.segments)
         return CliFailure(
             message=ErrorMessage(f'heading "{remainder}" not found in {path}.'),
             exit_code=ExitCode(1),
         )
-    return CliSuccess(body=RenderedBody("\n".join(extracted.pages).rstrip()))
+    if span.start_page is None:
+        return CliSuccess(body=RenderedBody(""))
+    try:
+        pages = read_pdf_pages(path, span.start_page, span.end_page)
+    except PdfIngestError as exc:
+        return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(1))
+    return CliSuccess(body=RenderedBody("\n".join(pages).rstrip()))
 
 
 def run(options: CliOptions) -> CliResult:

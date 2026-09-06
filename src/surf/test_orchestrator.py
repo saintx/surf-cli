@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pypdf import PageObject
 
 from surf import __version__
 from surf.models import CliFailure
@@ -528,6 +529,27 @@ def test_pdf_no_heading_lists_outline(tmp_path: Path) -> None:
     output = rendered([str(path)])
     assert output.splitlines() == ["- Parent", "  - Child"]
     assert "Traceback" not in output
+
+
+def test_pdf_list_does_not_extract_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "doc.pdf"
+    write_outline_pdf(
+        path,
+        page_count=2,
+        outline=(("Parent", 0, (("Child", 1, ()),)),),
+        page_texts=("secret-a", "secret-b"),
+    )
+
+    def boom(self: object, *args: object, **kwargs: object) -> str:
+        raise AssertionError("extract_text called on PDF list")
+
+    monkeypatch.setattr(PageObject, "extract_text", boom)
+    listed = rendered(["--list", str(path)])
+    default = rendered([str(path)])
+    assert listed.splitlines() == ["- Parent", "  - Child"]
+    assert default.splitlines() == ["- Parent", "  - Child"]
+    assert "secret-a" not in listed
+    assert "secret-b" not in default
 
 
 def test_pdf_frontmatter_only_empty(tmp_path: Path) -> None:

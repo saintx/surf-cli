@@ -21,11 +21,13 @@ from surf.adapters import (
     document_byte_count,
     read_document,
     read_pdf,
+    read_pdf_outline,
+    read_pdf_pages,
     resolve_file,
     resolve_tex_include,
     write_output,
 )
-from surf.models import FileRef, RenderedBody, TexIncludeRelPath
+from surf.models import FileRef, PageIndex, RenderedBody, TexIncludeRelPath
 
 type OutlineSpec = tuple[str, int, Sequence["OutlineSpec"]]
 
@@ -182,3 +184,35 @@ def test_read_pdf_encrypted_raises(tmp_path: Path) -> None:
     )
     with pytest.raises(PdfIngestError):
         read_pdf(path)
+
+
+def test_read_pdf_outline_skips_page_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "nested.pdf"
+    write_outline_pdf(
+        path,
+        page_count=2,
+        outline=(("Parent", 0, (("Child", 1, ()),)),),
+    )
+
+    def boom(self: object, *args: object, **kwargs: object) -> str:
+        raise AssertionError("extract_text called while reading outline")
+
+    monkeypatch.setattr(PageObject, "extract_text", boom)
+    outline = read_pdf_outline(path)
+    assert [str(item.title) for item in outline] == ["Parent", "Child"]
+
+
+def test_read_pdf_pages_extracts_requested_range(tmp_path: Path) -> None:
+    path = tmp_path / "ranged.pdf"
+    write_outline_pdf(
+        path,
+        page_count=4,
+        outline=(("A", 0, ()), ("B", 2, ())),
+        page_texts=("p0", "p1", "p2", "p3"),
+    )
+    pages = read_pdf_pages(path, PageIndex(0), PageIndex(2))
+    joined = "\n".join(pages)
+    assert "p0" in joined
+    assert "p1" in joined
+    assert "p2" not in joined
+    assert "p3" not in joined

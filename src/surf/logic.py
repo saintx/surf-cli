@@ -26,6 +26,7 @@ from surf.models import (
     LineCount,
     LineIndex,
     OutlineLevel,
+    OutlinePageSpan,
     OutlineRecord,
     PageIndex,
     ParsedLink,
@@ -405,14 +406,13 @@ def extract_section(
     )
 
 
-def extract_outline_section(
-    document: PdfDocument,
+def match_outline_span(
+    outline: Sequence[OutlineRecord],
     heading_path: HeadingPath,
     *,
     level_filter: OutlineLevel | None = None,
-) -> ExtractedOutline | None:
-    """Extract dest-to-next-dest. Nested containment uses outline indices."""
-    outline = document.outline
+) -> OutlinePageSpan | None:
+    """Dest-to-next-dest page bounds. Does not read page text."""
     segments = heading_path.segments
     if not segments:
         return None
@@ -463,17 +463,31 @@ def extract_outline_section(
 
     if match_idx is None or match_level is None:
         return None
+    return OutlinePageSpan(
+        level=match_level,
+        start_page=outline[match_idx].page_index,
+        end_page=next_dest_page(match_idx),
+    )
 
-    start_page = outline[match_idx].page_index
-    if start_page is None:
-        return ExtractedOutline(level=match_level, pages=())
 
-    end_page = next_dest_page(match_idx)
-    if end_page is None:
-        page_slice = document.pages[int(start_page) :]
+def extract_outline_section(
+    document: PdfDocument,
+    heading_path: HeadingPath,
+    *,
+    level_filter: OutlineLevel | None = None,
+) -> ExtractedOutline | None:
+    """Slice in-memory page text for a dest-to-next-dest span."""
+    span = match_outline_span(document.outline, heading_path, level_filter=level_filter)
+    if span is None:
+        return None
+    if span.start_page is None:
+        return ExtractedOutline(level=span.level, pages=())
+    start = int(span.start_page)
+    if span.end_page is None:
+        page_slice = document.pages[start:]
     else:
-        page_slice = document.pages[int(start_page) : int(end_page)]
-    return ExtractedOutline(level=match_level, pages=tuple(page_slice))
+        page_slice = document.pages[start : int(span.end_page)]
+    return ExtractedOutline(level=span.level, pages=tuple(page_slice))
 
 
 def format_empty_index(*, line_count: LineCount, byte_count: ByteCount) -> RenderedBody:
