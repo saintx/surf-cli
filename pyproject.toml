@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "surf-cli"
-version = "0.4.2"
+version = "0.4.3"
 description = "Extract markdown sections by heading with Obsidian link support"
 readme = "README.md"
 license = { file = "LICENSE" }
