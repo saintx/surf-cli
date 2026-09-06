@@ -1,6 +1,6 @@
 # surf
 
-Extract a markdown or TeX section by heading without loading the rest of the file.
+Extract a markdown, TeX, or PDF section by heading without loading the rest of the file.
 
 ```bash
 surf path/to/file.md "Heading"
@@ -8,15 +8,17 @@ surf -l path/to/file.md
 surf -f path/to/file.md
 surf -l path/to/file.tex
 surf path/to/file.tex "Heading"
+surf -l path/to/file.pdf
+surf path/to/file.pdf "Heading"
 ```
 
-A heading is an address: ATX display text on markdown, brace title on TeX, or the TeX `abstract` environment (addressed as `abstract`). The return value is that section through the next heading of the same or higher level. Nested paths (`Parent#Child`) distinguish same-named headings under different parents.
+A heading is an address: ATX display text on markdown, brace title on TeX, the TeX `abstract` environment (addressed as `abstract`), or an outline bookmark title on PDF. On markdown and TeX the return value is that section through the next heading of the same or higher level. On PDF it is dest-to-next-dest page text; when the next dest is on the same page, that dest page is included. Nested paths (`Parent#Child`) distinguish same-named headings under different parents.
 
-`--level` is 1 at the top of the heading tree. On markdown that is `#`. On TeX it is the shallowest command in the file, so `--level 1` is `\section` in an article. Listing with `--level N` includes ranks 1 through N. Named extract uses N as an exact match.
+`--level` is 1 at the top of the heading tree. On markdown that is `#`. On TeX it is the shallowest command in the file, so `--level 1` is `\section` in an article. On PDF it is the outline's native rank. Listing with `--level N` includes ranks 1 through N. Named extract uses N as an exact match.
 
 TeX `\input` and `\include` of `.tex` files are expanded relative to the file you name. Graphics, comments, shell pipes, and macro-constructed paths are not.
 
-If the file has no headings, surf prints that it has no structural index, with the file's line and byte counts. It does not dump the body.
+If the file has no headings, or a PDF has no outline, surf prints that it has no structural index, with line and byte counts on markdown and TeX, or page and byte counts on PDF. It does not dump the body.
 
 Python 3.12+. pypdf is the runtime dependency for PDF outline addressing.
 

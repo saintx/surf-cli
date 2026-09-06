@@ -70,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "heading",
         nargs="?",
-        help="Heading text (when target is a plain file path)",
+        help="Heading or outline title (when target is a plain file path)",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--full", action="store_true", help="Output frontmatter + section content")
@@ -93,7 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-l",
         action="store_true",
         dest="list_headings",
-        help="List all headings in the file",
+        help="List headings or PDF outline titles",
     )
     parser.add_argument(
         "--level",

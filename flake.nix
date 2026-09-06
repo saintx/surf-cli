@@ -1,5 +1,5 @@
 {
-  description = "surf - Extract markdown sections by heading";
+  description = "surf - Extract markdown, TeX, or PDF sections by heading";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
