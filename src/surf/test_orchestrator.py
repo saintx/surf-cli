@@ -113,6 +113,18 @@ def test_list_level_filters_markdown(sample_file: Path) -> None:
     assert "Introduction" not in output
 
 
+def test_list_level_1_markdown_is_hash_not_hashhash(sample_file: Path) -> None:
+    output = rendered(["--list", "--level", "1", str(sample_file)])
+    assert output.splitlines() == ["- Introduction"]
+
+
+def test_markdown_hashhash_only_still_needs_level_2(tmp_path: Path) -> None:
+    path = tmp_path / "notes.md"
+    path.write_text("## Details\n\nbody\n")
+    assert "Details" not in rendered(["--list", "--level", "1", str(path)])
+    assert rendered(["--list", "--level", "2", str(path)]).splitlines() == ["  - Details"]
+
+
 def test_list_headings(sample_file: Path) -> None:
     output = rendered(["--list", str(sample_file)])
     assert "- Introduction" in output
@@ -221,6 +233,75 @@ def test_tex_extract_level_1_hits_section_not_subsection(tex_file: Path) -> None
     assert "sub body" in output
     missing = run_argv(["--level", "2", str(tex_file), "What this corpus is"])
     assert isinstance(missing, CliFailure)
+
+
+def test_tex_article_level_1_lists_section_not_empty(tmp_path: Path) -> None:
+    """0.4.2 stored \\section at rank 3, so --level 1 printed nothing."""
+    path = tmp_path / "main.tex"
+    path.write_text(
+        "\\section{Introduction}\nintro\n"
+        "\\subsection{Child}\nchild\n"
+        "\\section{Related Work}\nrelated\n"
+    )
+    listed = rendered(["--list", "--level", "1", str(path)])
+    assert listed.splitlines() == ["- Introduction", "- Related Work"]
+    indexed = rendered(["--level", "1", str(path)])
+    assert indexed.splitlines() == ["- Introduction", "- Related Work"]
+
+
+def test_tex_article_level_3_is_not_section(tmp_path: Path) -> None:
+    """Lock against reverting to the LaTeX 1-7 map where \\section is rank 3."""
+    path = tmp_path / "main.tex"
+    path.write_text(
+        "\\section{Introduction}\nintro\n"
+        "\\subsection{Child}\nchild\n"
+        "\\section{Related Work}\nrelated\n"
+    )
+    listed = rendered(["--list", "--level", "3", str(path)])
+    assert listed == ""
+    assert "Introduction" not in listed
+    extracted = run_argv(["--level", "3", str(path), "Introduction"])
+    assert isinstance(extracted, CliFailure)
+    assert extracted.exit_code == 1
+
+
+def test_tex_article_level_2_lists_subsection(tmp_path: Path) -> None:
+    path = tmp_path / "main.tex"
+    path.write_text(
+        "\\section{Introduction}\nintro\n"
+        "\\subsection{Child}\nchild\n"
+        "\\section{Related Work}\nrelated\n"
+    )
+    listed = rendered(["--list", "--level", "2", str(path)])
+    assert listed.splitlines() == ["  - Child"]
+    extracted = rendered(["--level", "2", str(path), "Child"])
+    assert "child" in extracted
+    assert r"\section{Related Work}" not in extracted
+
+
+def test_tex_book_level_1_is_chapter_not_section(tmp_path: Path) -> None:
+    path = tmp_path / "book.tex"
+    path.write_text("\\chapter{One}\n\\section{Two}\n\\subsection{Three}\n")
+    assert rendered(["--list", "--level", "1", str(path)]).splitlines() == ["- One"]
+    assert rendered(["--list", "--level", "2", str(path)]).splitlines() == ["  - Two"]
+    assert rendered(["--list", "--level", "3", str(path)]).splitlines() == ["    - Three"]
+
+
+def test_tex_input_master_level_1_lists_chapter_sections(tmp_path: Path) -> None:
+    chapters = tmp_path / "chapters"
+    chapters.mkdir()
+    (chapters / "1_introduction.tex").write_text("\\section{Introduction}\n\nintro body\n")
+    (chapters / "2_related_work.tex").write_text(
+        "\\section{Related Work}\n\\subsection{Prior}\nrelated body\n"
+    )
+    master = tmp_path / "main.tex"
+    master.write_text("\\input{chapters/1_introduction}\n\\input{chapters/2_related_work}\n")
+    listed = rendered(["--list", "--level", "1", str(master)])
+    assert listed.splitlines() == ["- Introduction", "- Related Work"]
+    assert rendered(["--list", "--level", "3", str(master)]) == ""
+    extracted = rendered(["--level", "1", str(master), "Introduction"])
+    assert "intro body" in extracted
+    assert "related body" not in extracted
 
 
 def test_tex_no_heading_drops_wrapped_title_lines(tmp_path: Path) -> None:

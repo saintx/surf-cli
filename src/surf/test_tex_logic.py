@@ -366,6 +366,49 @@ def test_relative_heading_levels_shifts_min_to_one() -> None:
     assert [int(record.level) for record in shifted] == [1, 2]
 
 
+def test_relative_heading_levels_noop_when_min_is_one() -> None:
+    records = (
+        HeadingRecord(
+            level=HeadingLevel(1),
+            line_index=LineIndex(0),
+            title_end_line=LineIndex(0),
+            text=HeadingText("Part"),
+        ),
+        HeadingRecord(
+            level=HeadingLevel(3),
+            line_index=LineIndex(1),
+            title_end_line=LineIndex(1),
+            text=HeadingText("Section"),
+        ),
+    )
+    assert relative_heading_levels(records) == records
+
+
+def test_relative_heading_levels_empty() -> None:
+    assert relative_heading_levels(()) == ()
+
+
+def test_article_heading_list_level_1_not_3() -> None:
+    lines = tex_lines(r"""
+        \section{Introduction}
+        \subsection{Child}
+        \section{Related Work}
+        """)
+    headings = parse_tex_headings(lines)
+    assert format_heading_list(
+        lines, headings=headings, level_filter=HeadingLevel(1)
+    ).splitlines() == [
+        "- Introduction",
+        "- Related Work",
+    ]
+    assert format_heading_list(
+        lines, headings=headings, level_filter=HeadingLevel(2)
+    ).splitlines() == [
+        "  - Child",
+    ]
+    assert format_heading_list(lines, headings=headings, level_filter=HeadingLevel(3)) == ""
+
+
 def test_tex_command_level_map() -> None:
     assert _TEX_LEVEL[TexCommand.PART] == HeadingLevel(1)
     assert _TEX_LEVEL[TexCommand.CHAPTER] == HeadingLevel(2)
