@@ -4,34 +4,39 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from urllib.parse import unquote
 
 from surf.models import (
     CharOffset,
+    CliTarget,
     ClosedSpan,
     Delimiter,
     ExtractedSection,
     FileRef,
     FrontmatterSplit,
     HeadingLevel,
+    HeadingLineCount,
     HeadingPath,
+    HeadingPathRemainder,
     HeadingRecord,
     HeadingText,
     LineIndex,
     ParsedLink,
+    RenderedBody,
     ScanBuffer,
+    TexCommand,
 )
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
-_TEX_LEVEL = {
-    "part": 1,
-    "chapter": 2,
-    "section": 3,
-    "subsection": 4,
-    "subsubsection": 5,
-    "paragraph": 6,
-    "subparagraph": 7,
+_TEX_LEVEL: Mapping[TexCommand, HeadingLevel] = {
+    TexCommand("part"): HeadingLevel(1),
+    TexCommand("chapter"): HeadingLevel(2),
+    TexCommand("section"): HeadingLevel(3),
+    TexCommand("subsection"): HeadingLevel(4),
+    TexCommand("subsubsection"): HeadingLevel(5),
+    TexCommand("paragraph"): HeadingLevel(6),
+    TexCommand("subparagraph"): HeadingLevel(7),
 }
 _TEX_COMMAND_RE = re.compile(
     r"^\s*\\("
@@ -40,44 +45,53 @@ _TEX_COMMAND_RE = re.compile(
 )
 
 
-def parse_heading_path(remainder: str) -> HeadingPath | None:
+def parse_heading_path(remainder: HeadingPathRemainder) -> HeadingPath | None:
     segments = tuple(HeadingText(part.strip()) for part in remainder.split("#") if part.strip())
     if not segments:
         return None
     return HeadingPath(segments=segments)
 
 
-def parse_link(text: str) -> ParsedLink:
+def parse_link(target: CliTarget) -> ParsedLink:
     """Parse a wikilink, markdown link, or plain path#heading into a ParsedLink.
 
     The first `#` splits file ref from heading-path remainder.
     """
-    m = re.match(r"^\[\[([^|\]]+?)(?:\|[^\]]+)?\]\]$", text)
+    m = re.match(r"^\[\[([^|\]]+?)(?:\|[^\]]+)?\]\]$", target)
     if m:
         inner = m.group(1)
         if "#" in inner:
             raw_path, remainder = inner.split("#", 1)
             file_ref = FileRef(raw_path.strip()) if raw_path.strip() else None
-            return ParsedLink(file_ref=file_ref, heading_path=parse_heading_path(remainder))
+            return ParsedLink(
+                file_ref=file_ref,
+                heading_path=parse_heading_path(HeadingPathRemainder(remainder)),
+            )
         stripped = inner.strip()
         return ParsedLink(file_ref=FileRef(stripped) if stripped else None, heading_path=None)
 
-    m = re.match(r"^\[([^\]]*)\]\((.+?)\)$", text)
+    m = re.match(r"^\[([^\]]*)\]\((.+?)\)$", target)
     if m:
         raw = unquote(m.group(2))
         if "#" in raw:
             raw_path, remainder = raw.split("#", 1)
             file_ref = FileRef(raw_path.strip()) if raw_path.strip() else None
-            return ParsedLink(file_ref=file_ref, heading_path=parse_heading_path(remainder))
+            return ParsedLink(
+                file_ref=file_ref,
+                heading_path=parse_heading_path(HeadingPathRemainder(remainder)),
+            )
         stripped = raw.strip()
         return ParsedLink(file_ref=FileRef(stripped) if stripped else None, heading_path=None)
 
-    if "#" in text:
-        raw_path, remainder = text.split("#", 1)
+    if "#" in target:
+        raw_path, remainder = target.split("#", 1)
         file_ref = FileRef(raw_path.strip()) if raw_path.strip() else None
-        return ParsedLink(file_ref=file_ref, heading_path=parse_heading_path(remainder))
+        return ParsedLink(
+            file_ref=file_ref,
+            heading_path=parse_heading_path(HeadingPathRemainder(remainder)),
+        )
 
-    stripped = text.strip()
+    stripped = target.strip()
     return ParsedLink(file_ref=FileRef(stripped) if stripped else None, heading_path=None)
 
 
@@ -90,6 +104,7 @@ def parse_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
                 HeadingRecord(
                     level=HeadingLevel(len(m.group(1))),
                     line_index=LineIndex(i),
+                    title_end_line=LineIndex(i),
                     text=HeadingText(m.group(2).strip()),
                 )
             )
@@ -114,6 +129,13 @@ def _delimited_span_end(
             if depth == 0:
                 return CharOffset(i + 1)
     return None
+
+
+def _skip_horizontal(buffer: ScanBuffer, pos: CharOffset) -> CharOffset:
+    i = int(pos)
+    while i < len(buffer) and buffer[i] in " \t":
+        i += 1
+    return CharOffset(i)
 
 
 def _extend_until_closed(
@@ -148,6 +170,7 @@ def _parse_tex_heading_at(
     pos = CharOffset(0)
     if pos < len(rest) and rest[pos] == "*":
         pos = CharOffset(pos + 1)
+    pos = _skip_horizontal(rest, pos)
     if pos < len(rest) and rest[pos] == "[":
         extended = _extend_until_closed(
             lines, line_index, rest, pos, Delimiter("["), Delimiter("]")
@@ -155,7 +178,7 @@ def _parse_tex_heading_at(
         if extended is None:
             return None
         rest = extended.buffer
-        pos = extended.end
+        pos = _skip_horizontal(extended.buffer, extended.end)
     if pos >= len(rest) or rest[pos] != "{":
         return None
     extended = _extend_until_closed(lines, line_index, rest, pos, Delimiter("{"), Delimiter("}"))
@@ -166,10 +189,12 @@ def _parse_tex_heading_at(
     title = re.sub(r"\s+", " ", rest[pos + 1 : brace_end - 1]).strip()
     if not title:
         return None
+    command = TexCommand(m.group(1))
     return (
         HeadingRecord(
-            level=HeadingLevel(_TEX_LEVEL[m.group(1)]),
+            level=_TEX_LEVEL[command],
             line_index=line_index,
+            title_end_line=extended.last_line,
             text=HeadingText(title),
         ),
         extended.last_line,
@@ -225,9 +250,10 @@ def extract_section(
     prev_level = HeadingLevel(0)
     match_idx: LineIndex | None = None
     match_level: HeadingLevel | None = None
+    match_title_end: LineIndex | None = None
 
     for i, segment in enumerate(segments):
-        target = str(segment).lower()
+        needle = str(segment).lower()
         is_last = i == len(segments) - 1
         found: HeadingRecord | None = None
         for record in headings:
@@ -235,7 +261,7 @@ def extract_section(
                 continue
             if i > 0 and record.level <= prev_level:
                 continue
-            if str(record.text).lower().strip() != target:
+            if str(record.text).lower().strip() != needle:
                 continue
             if is_last and level_filter is not None and record.level != level_filter:
                 continue
@@ -245,35 +271,44 @@ def extract_section(
             return None
         match_level = found.level
         match_idx = found.line_index
+        match_title_end = found.title_end_line
         bound_start = int(match_idx)
         prev_level = match_level
         bound_end = section_end(match_idx, match_level)
 
-    if match_idx is None or match_level is None:
+    if match_idx is None or match_level is None or match_title_end is None:
         return None
-    return ExtractedSection(level=match_level, lines=tuple(lines[int(match_idx) : bound_end]))
+    return ExtractedSection(
+        level=match_level,
+        lines=tuple(lines[int(match_idx) : bound_end]),
+        heading_line_count=HeadingLineCount(int(match_title_end) - int(match_idx) + 1),
+    )
 
 
 def format_heading_list(
     lines: Sequence[str],
     *,
     headings: tuple[HeadingRecord, ...] | None = None,
-) -> str:
+    level_filter: HeadingLevel | None = None,
+) -> RenderedBody:
     records = parse_headings(lines) if headings is None else headings
+    if level_filter is not None:
+        records = tuple(record for record in records if record.level == level_filter)
     out: list[str] = []
     for record in records:
         indent = "  " * (int(record.level) - 1)
         out.append(f"{indent}- {record.text}")
-    return "\n".join(out)
+    return RenderedBody("\n".join(out))
 
 
 def format_file_index(
     split: FrontmatterSplit,
     *,
     headings: tuple[HeadingRecord, ...] | None = None,
-) -> str:
+    level_filter: HeadingLevel | None = None,
+) -> RenderedBody:
     frontmatter = "\n".join(split.frontmatter) if split.frontmatter is not None else ""
-    heading_list = format_heading_list(split.body, headings=headings)
+    heading_list = format_heading_list(split.body, headings=headings, level_filter=level_filter)
     if frontmatter and heading_list:
-        return f"{frontmatter}\n\n{heading_list}"
-    return frontmatter or heading_list
+        return RenderedBody(f"{frontmatter}\n\n{heading_list}")
+    return RenderedBody(frontmatter or heading_list)

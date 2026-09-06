@@ -107,6 +107,12 @@ def test_no_heading_does_not_dump(sample_file: Path) -> None:
     assert "intro" not in output.splitlines()
 
 
+def test_list_level_filters_markdown(sample_file: Path) -> None:
+    output = rendered(["--list", "--level", "2", str(sample_file)])
+    assert "Details" in output
+    assert "Introduction" not in output
+
+
 def test_list_headings(sample_file: Path) -> None:
     output = rendered(["--list", str(sample_file)])
     assert "- Introduction" in output
@@ -200,6 +206,32 @@ def test_tex_bom_prefixed_list_and_extract(tmp_path: Path) -> None:
     assert not extracted.startswith("\ufeff")
     assert r"\section{Related Work}" in extracted
     assert "body" in extracted
+
+
+def test_tex_list_level_filters_to_sections(tex_file: Path) -> None:
+    output = rendered(["--list", "--level", "3", str(tex_file)])
+    assert "What this corpus is" in output
+    assert "Sibling" in output
+    assert "A subsection" not in output
+
+
+def test_tex_no_heading_drops_wrapped_title_lines(tmp_path: Path) -> None:
+    path = tmp_path / "wrap.tex"
+    path.write_text(
+        "\\section{Low Dimensions Suffice: Proof of \n"
+        "\\texorpdfstring{Theorem~\\ref{thm:main}}{Main Theorem}}\n"
+        "proof body\n"
+        "\\section{Next}\n"
+    )
+    title = (
+        r"Low Dimensions Suffice: Proof of "
+        r"\texorpdfstring{Theorem~\ref{thm:main}}{Main Theorem}"
+    )
+    output = rendered(["--no-heading", str(path), title])
+    assert r"\section{Low Dimensions Suffice: Proof of " not in output
+    assert r"\texorpdfstring{Theorem~\ref{thm:main}}{Main Theorem}}" not in output
+    assert "proof body" in output
+    assert r"\section{Next}" not in output
 
 
 def test_tex_multiline_title_list_and_extract(tmp_path: Path) -> None:

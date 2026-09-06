@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from surf.adapters import read_document, resolve_file, write_output
-from surf.models import FileRef
+from surf.models import FileRef, RenderedBody
 
 
 def test_resolve_existing(tmp_path: Path) -> None:
@@ -43,5 +43,5 @@ def test_read_document_strips_utf8_bom(tmp_path: Path) -> None:
 
 def test_write_output_file(tmp_path: Path) -> None:
     dest = tmp_path / "out.md"
-    write_output("- Introduction", FileRef(str(dest)))
+    write_output(RenderedBody("- Introduction"), FileRef(str(dest)))
     assert "- Introduction" in dest.read_text()

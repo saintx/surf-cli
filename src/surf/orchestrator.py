@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 
 from surf import __version__
 from surf.adapters import read_document, resolve_file, write_output
@@ -22,10 +23,15 @@ from surf.models import (
     CliFailure,
     CliOptions,
     CliSuccess,
+    CliTarget,
+    ErrorMessage,
+    ExitCode,
     FileRef,
     HeadingLevel,
     HeadingPath,
+    HeadingPathRemainder,
     HeadingText,
+    RenderedBody,
 )
 
 type CliResult = CliSuccess | CliFailure
@@ -82,11 +88,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
     if args.target is None:
-        return CliFailure(message="no target specified. Use surf --help for usage.", exit_code=2)
-    parsed = parse_link(args.target)
+        return CliFailure(
+            message=ErrorMessage("no target specified. Use surf --help for usage."),
+            exit_code=ExitCode(2),
+        )
+    parsed = parse_link(CliTarget(args.target))
     heading_path = parsed.heading_path
     if heading_path is None and args.heading is not None:
-        heading_path = parse_heading_path(args.heading)
+        heading_path = parse_heading_path(HeadingPathRemainder(args.heading))
         if heading_path is None:
             heading_path = HeadingPath(segments=(HeadingText(args.heading),))
     level_filter = HeadingLevel(args.level) if args.level is not None else None
@@ -105,11 +114,14 @@ def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
 
 def run(options: CliOptions) -> CliResult:
     if options.file_ref is None:
-        return CliFailure(message="could not parse file path from target.", exit_code=2)
+        return CliFailure(
+            message=ErrorMessage("could not parse file path from target."),
+            exit_code=ExitCode(2),
+        )
     try:
         path = resolve_file(options.file_ref)
     except FileNotFoundError as exc:
-        return CliFailure(message=str(exc), exit_code=2)
+        return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(2))
     lines = read_document(path)
     split = split_frontmatter(lines)
     headings = (
@@ -119,14 +131,20 @@ def run(options: CliOptions) -> CliResult:
     )
 
     if options.list_headings:
-        return CliSuccess(body=format_heading_list(split.body, headings=headings))
+        return CliSuccess(
+            body=format_heading_list(
+                split.body, headings=headings, level_filter=options.level_filter
+            )
+        )
     if options.frontmatter_only:
         if split.frontmatter is None:
-            return CliSuccess(body="")
-        return CliSuccess(body="\n".join(split.frontmatter))
+            return CliSuccess(body=RenderedBody(""))
+        return CliSuccess(body=RenderedBody("\n".join(split.frontmatter)))
 
     if options.heading_path is None:
-        return CliSuccess(body=format_file_index(split, headings=headings))
+        return CliSuccess(
+            body=format_file_index(split, headings=headings, level_filter=options.level_filter)
+        )
 
     extracted = extract_section(
         split.body,
@@ -136,19 +154,22 @@ def run(options: CliOptions) -> CliResult:
     )
     if extracted is None:
         remainder = "#".join(str(seg) for seg in options.heading_path.segments)
-        return CliFailure(message=f'heading "{remainder}" not found in {path}.', exit_code=1)
+        return CliFailure(
+            message=ErrorMessage(f'heading "{remainder}" not found in {path}.'),
+            exit_code=ExitCode(1),
+        )
 
     section_lines = extracted.lines
     if options.no_heading and section_lines:
-        section_lines = section_lines[1:]
+        section_lines = section_lines[int(extracted.heading_line_count) :]
     parts: list[str] = []
     if options.full and split.frontmatter is not None:
         parts.append("\n".join(split.frontmatter))
     parts.append("\n".join(section_lines))
-    return CliSuccess(body="\n".join(parts).rstrip())
+    return CliSuccess(body=RenderedBody("\n".join(parts).rstrip()))
 
 
-def run_argv(argv: list[str] | None = None) -> CliResult:
+def run_argv(argv: Sequence[str] | None = None) -> CliResult:
     parser = build_parser()
     args = parser.parse_args(argv)
     converted = options_from_namespace(args)

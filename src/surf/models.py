@@ -13,6 +13,13 @@ LineIndex = NewType("LineIndex", int)
 ScanBuffer = NewType("ScanBuffer", str)
 CharOffset = NewType("CharOffset", int)
 Delimiter = NewType("Delimiter", str)
+TexCommand = NewType("TexCommand", str)
+HeadingLineCount = NewType("HeadingLineCount", int)
+CliTarget = NewType("CliTarget", str)
+HeadingPathRemainder = NewType("HeadingPathRemainder", str)
+RenderedBody = NewType("RenderedBody", str)
+ErrorMessage = NewType("ErrorMessage", str)
+ExitCode = NewType("ExitCode", int)
 
 type DocumentLines = tuple[str, ...]
 
@@ -26,6 +33,7 @@ class HeadingPath:
 class HeadingRecord:
     level: HeadingLevel
     line_index: LineIndex
+    title_end_line: LineIndex
     text: HeadingText
 
 
@@ -52,6 +60,7 @@ class FrontmatterSplit:
 class ExtractedSection:
     level: HeadingLevel
     lines: DocumentLines
+    heading_line_count: HeadingLineCount
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,10 +77,10 @@ class CliOptions:
 
 @dataclass(frozen=True, slots=True)
 class CliSuccess:
-    body: str
+    body: RenderedBody
 
 
 @dataclass(frozen=True, slots=True)
 class CliFailure:
-    message: str
-    exit_code: int
+    message: ErrorMessage
+    exit_code: ExitCode

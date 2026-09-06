@@ -6,6 +6,7 @@ from __future__ import annotations
 import textwrap
 
 from surf.logic import (
+    _TEX_LEVEL,
     extract_section,
     format_file_index,
     format_heading_list,
@@ -13,11 +14,11 @@ from surf.logic import (
     parse_tex_headings,
     split_frontmatter,
 )
-from surf.models import HeadingLevel, HeadingPath
+from surf.models import HeadingLevel, HeadingPath, HeadingPathRemainder, TexCommand
 
 
 def hp(remainder: str) -> HeadingPath:
-    parsed = parse_heading_path(remainder)
+    parsed = parse_heading_path(HeadingPathRemainder(remainder))
     assert parsed is not None
     return parsed
 
@@ -310,3 +311,43 @@ def test_parse_multiline_paragraph_title() -> None:
 
 def test_unclosed_title_at_eof_is_not_a_heading() -> None:
     assert parse_tex_headings([r"\section{Never closed"]) == ()
+
+
+def test_tex_command_level_map() -> None:
+    assert _TEX_LEVEL[TexCommand("part")] == HeadingLevel(1)
+    assert _TEX_LEVEL[TexCommand("chapter")] == HeadingLevel(2)
+    assert _TEX_LEVEL[TexCommand("section")] == HeadingLevel(3)
+    assert _TEX_LEVEL[TexCommand("subsection")] == HeadingLevel(4)
+    assert _TEX_LEVEL[TexCommand("subsubsection")] == HeadingLevel(5)
+    assert _TEX_LEVEL[TexCommand("paragraph")] == HeadingLevel(6)
+    assert _TEX_LEVEL[TexCommand("subparagraph")] == HeadingLevel(7)
+
+
+def test_parse_space_between_optional_and_long_title() -> None:
+    lines = [r"\section[short] {long}"]
+    headings = parse_tex_headings(lines)
+    assert [str(record.text) for record in headings] == ["long"]
+    assert extract_section(lines, hp("short"), headings=headings) is None
+    result = extract_section(lines, hp("long"), headings=headings)
+    assert result is not None
+
+
+def test_wrapped_title_heading_line_count() -> None:
+    lines = [
+        r"\section{Low Dimensions Suffice: Proof of ",
+        r"\texorpdfstring{Theorem~\ref{thm:main}}{Main Theorem}}",
+        "proof body",
+        r"\section{Next}",
+    ]
+    headings = parse_tex_headings(lines)
+    result = extract_section(
+        lines,
+        hp(
+            r"Low Dimensions Suffice: Proof of "
+            r"\texorpdfstring{Theorem~\ref{thm:main}}{Main Theorem}"
+        ),
+        headings=headings,
+    )
+    assert result is not None
+    assert int(result.heading_line_count) == 2
+    assert int(headings[0].title_end_line) == 1

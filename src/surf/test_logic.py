@@ -15,9 +15,11 @@ from surf.logic import (
     split_frontmatter,
 )
 from surf.models import (
+    CliTarget,
     FileRef,
     HeadingLevel,
     HeadingPath,
+    HeadingPathRemainder,
     HeadingText,
     ParsedLink,
 )
@@ -108,64 +110,66 @@ SIBLING_MD = textwrap.dedent("""\
 
 
 def hp(remainder: str) -> HeadingPath:
-    parsed = parse_heading_path(remainder)
+    parsed = parse_heading_path(HeadingPathRemainder(remainder))
     assert parsed is not None
     return parsed
 
 
+def link(target: str) -> ParsedLink:
+    return parse_link(CliTarget(target))
+
+
 def test_parse_link_wikilink_with_heading() -> None:
-    assert parse_link("[[notes/foo#Bar]]") == ParsedLink(
+    assert link("[[notes/foo#Bar]]") == ParsedLink(
         file_ref=FileRef("notes/foo"),
         heading_path=HeadingPath(segments=(HeadingText("Bar"),)),
     )
 
 
 def test_parse_link_wikilink_alias() -> None:
-    assert parse_link("[[notes/foo#Bar|My Alias]]") == ParsedLink(
+    assert link("[[notes/foo#Bar|My Alias]]") == ParsedLink(
         file_ref=FileRef("notes/foo"),
         heading_path=HeadingPath(segments=(HeadingText("Bar"),)),
     )
 
 
 def test_parse_link_wikilink_no_heading() -> None:
-    assert parse_link("[[notes/foo]]") == ParsedLink(
-        file_ref=FileRef("notes/foo"), heading_path=None
-    )
+    assert link("[[notes/foo]]") == ParsedLink(file_ref=FileRef("notes/foo"), heading_path=None)
 
 
 def test_parse_link_heading_only() -> None:
-    assert parse_link("[[#Heading]]") == ParsedLink(
+    assert link("[[#Heading]]") == ParsedLink(
         file_ref=None,
         heading_path=HeadingPath(segments=(HeadingText("Heading"),)),
     )
 
 
 def test_parse_link_markdown() -> None:
-    assert parse_link("[My Link](path/to/file.md#Section)") == ParsedLink(
+    assert link("[My Link](path/to/file.md#Section)") == ParsedLink(
         file_ref=FileRef("path/to/file.md"),
         heading_path=HeadingPath(segments=(HeadingText("Section"),)),
     )
 
 
 def test_parse_link_markdown_no_heading() -> None:
-    assert parse_link("[My Link](path/to/file.md)") == ParsedLink(
+    assert link("[My Link](path/to/file.md)") == ParsedLink(
         file_ref=FileRef("path/to/file.md"),
         heading_path=None,
     )
 
 
 def test_parse_link_url_encoded() -> None:
-    parsed = parse_link("[Link](my%20notes/the%20file.md#My%20Heading)")
+    parsed = link("[Link](my%20notes/the%20file.md#My%20Heading)")
     assert parsed.file_ref == FileRef("my notes/the file.md")
     assert parsed.heading_path == HeadingPath(segments=(HeadingText("My Heading"),))
 
 
 def test_parse_link_plain() -> None:
-    assert parse_link("file.md#Section") == ParsedLink(
+    assert link("file.md#Section") == ParsedLink(
         file_ref=FileRef("file.md"),
         heading_path=HeadingPath(segments=(HeadingText("Section"),)),
     )
-    assert parse_link("file.md") == ParsedLink(file_ref=FileRef("file.md"), heading_path=None)
+    assert link("file.md") == ParsedLink(file_ref=FileRef("file.md"), heading_path=None)
 
 
 def test_parse_link_nested_remainder() -> None:
@@ -173,12 +177,12 @@ def test_parse_link_nested_remainder() -> None:
         file_ref=FileRef("note"),
         heading_path=HeadingPath(segments=(HeadingText("Foo"), HeadingText("Baz"))),
     )
-    assert parse_link("[[note#Foo#Baz]]") == expected
-    assert parse_link("[x](note.md#Foo#Baz)") == ParsedLink(
+    assert link("[[note#Foo#Baz]]") == expected
+    assert link("[x](note.md#Foo#Baz)") == ParsedLink(
         file_ref=FileRef("note.md"),
         heading_path=expected.heading_path,
     )
-    assert parse_link("note.md#Foo#Baz") == ParsedLink(
+    assert link("note.md#Foo#Baz") == ParsedLink(
         file_ref=FileRef("note.md"),
         heading_path=expected.heading_path,
     )
@@ -276,14 +280,12 @@ def test_format_file_index_yaml_and_headings() -> None:
 
 
 def test_format_file_index_yaml_only() -> None:
-    split = split_frontmatter(
-        textwrap.dedent("""\
+    split = split_frontmatter(textwrap.dedent("""\
             ---
             title: YAML Only
             ---
             Body without headings.
-        """).splitlines()
-    )
+        """).splitlines())
     text = format_file_index(split)
     assert "title: YAML Only" in text
     assert "Body without headings" not in text

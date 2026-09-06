@@ -11,6 +11,7 @@ from surf.logic import (
     parse_headings,
     parse_tex_headings,
 )
+from surf.models import HeadingPathRemainder
 
 FIXTURE = """# Title
 
@@ -26,7 +27,7 @@ beta body line
 
 def test_extract_section_returns_section_and_is_sub_millisecond() -> None:
     lines = FIXTURE.splitlines()
-    heading = parse_heading_path("Alpha")
+    heading = parse_heading_path(HeadingPathRemainder("Alpha"))
     assert heading is not None
     t0 = time.perf_counter_ns()
     result = extract_section(lines, heading)
@@ -58,7 +59,7 @@ beta body line
 
 def test_tex_extract_section_is_sub_millisecond() -> None:
     lines = TEX_FIXTURE.splitlines()
-    heading = parse_heading_path("Alpha")
+    heading = parse_heading_path(HeadingPathRemainder("Alpha"))
     assert heading is not None
     t0 = time.perf_counter_ns()
     headings = parse_tex_headings(lines)
