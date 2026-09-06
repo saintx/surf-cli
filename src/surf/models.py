@@ -25,6 +25,7 @@ ExitCode = NewType("ExitCode", int)
 TexIncludeRelPath = NewType("TexIncludeRelPath", str)
 LineCount = NewType("LineCount", int)
 ByteCount = NewType("ByteCount", int)
+PageCount = NewType("PageCount", int)
 
 type DocumentLines = tuple[str, ...]
 type PageText = str
@@ -81,6 +82,13 @@ class OutlineRecord:
 class PdfDocument:
     outline: tuple[OutlineRecord, ...]
     pages: tuple[PageText, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PdfCatalog:
+    outline: tuple[OutlineRecord, ...]
+    page_count: PageCount
+    byte_count: ByteCount
 
 
 @dataclass(frozen=True, slots=True)

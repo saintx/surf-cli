@@ -17,8 +17,10 @@ from surf.models import (
     HeadingText,
     OutlineLevel,
     OutlineRecord,
+    PageCount,
     PageIndex,
     PageText,
+    PdfCatalog,
     PdfDocument,
     RenderedBody,
     TexIncludeRelPath,
@@ -133,13 +135,22 @@ def _pages_from_reader(
     return tuple((pages[i].extract_text() or "") for i in range(start_i, end_i))
 
 
-def read_pdf_outline(path: Path) -> tuple[OutlineRecord, ...]:
+def read_pdf_catalog(path: Path) -> PdfCatalog:
     try:
-        return _outline_from_reader(_open_reader(path))
+        reader = _open_reader(path)
+        return PdfCatalog(
+            outline=_outline_from_reader(reader),
+            page_count=PageCount(len(reader.pages)),
+            byte_count=ByteCount(path.stat().st_size),
+        )
     except PdfIngestError:
         raise
     except Exception as exc:
         raise PdfIngestError(f"could not read PDF: {path}") from exc
+
+
+def read_pdf_outline(path: Path) -> tuple[OutlineRecord, ...]:
+    return read_pdf_catalog(path).outline
 
 
 def read_pdf_pages(path: Path, start: PageIndex, end: PageIndex | None) -> tuple[PageText, ...]:

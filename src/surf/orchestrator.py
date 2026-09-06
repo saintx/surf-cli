@@ -13,7 +13,7 @@ from surf.adapters import (
     PdfIngestError,
     document_byte_count,
     read_document,
-    read_pdf_outline,
+    read_pdf_catalog,
     read_pdf_pages,
     resolve_file,
     resolve_tex_include,
@@ -22,6 +22,7 @@ from surf.adapters import (
 from surf.logic import (
     extract_section,
     format_empty_index,
+    format_empty_pdf_index,
     format_file_index,
     format_heading_list,
     format_outline_list,
@@ -135,15 +136,21 @@ def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
 
 def _run_pdf(path: Path, options: CliOptions) -> CliResult:
     try:
-        outline = read_pdf_outline(path)
+        catalog = read_pdf_catalog(path)
     except PdfIngestError as exc:
         return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(1))
     outline_level = OutlineLevel(options.level_filter) if options.level_filter is not None else None
     if options.frontmatter_only:
         return CliSuccess(body=RenderedBody(""))
     if options.list_headings or options.heading_path is None:
-        return CliSuccess(body=format_outline_list(outline, level_filter=outline_level))
-    span = match_outline_span(outline, options.heading_path, level_filter=outline_level)
+        if not catalog.outline:
+            return CliSuccess(
+                body=format_empty_pdf_index(
+                    page_count=catalog.page_count, byte_count=catalog.byte_count
+                )
+            )
+        return CliSuccess(body=format_outline_list(catalog.outline, level_filter=outline_level))
+    span = match_outline_span(catalog.outline, options.heading_path, level_filter=outline_level)
     if span is None:
         remainder = "#".join(str(seg) for seg in options.heading_path.segments)
         return CliFailure(

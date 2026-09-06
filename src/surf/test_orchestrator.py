@@ -552,6 +552,14 @@ def test_pdf_list_does_not_extract_text(tmp_path: Path, monkeypatch: pytest.Monk
     assert "secret-b" not in default
 
 
+def test_pdf_without_outline_reports_empty_index(tmp_path: Path) -> None:
+    path = tmp_path / "plain.pdf"
+    write_outline_pdf(path, page_count=3)
+    expected = f"no structural index\npages: 3\nbytes: {path.stat().st_size}"
+    assert rendered(["--list", str(path)]) == expected
+    assert rendered([str(path)]) == expected
+
+
 def test_pdf_frontmatter_only_empty(tmp_path: Path) -> None:
     path = tmp_path / "doc.pdf"
     write_outline_pdf(path, page_count=1, outline=(("Parent", 0, ()),))

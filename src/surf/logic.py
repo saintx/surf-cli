@@ -28,6 +28,7 @@ from surf.models import (
     OutlineLevel,
     OutlinePageSpan,
     OutlineRecord,
+    PageCount,
     PageIndex,
     ParsedLink,
     PdfDocument,
@@ -492,6 +493,10 @@ def extract_outline_section(
 
 def format_empty_index(*, line_count: LineCount, byte_count: ByteCount) -> RenderedBody:
     return RenderedBody(f"no structural index\nlines: {int(line_count)}\nbytes: {int(byte_count)}")
+
+
+def format_empty_pdf_index(*, page_count: PageCount, byte_count: ByteCount) -> RenderedBody:
+    return RenderedBody(f"no structural index\npages: {int(page_count)}\nbytes: {int(byte_count)}")
 
 
 def format_heading_list(

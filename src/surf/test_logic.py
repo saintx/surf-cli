@@ -9,6 +9,7 @@ from surf.logic import (
     extract_outline_section,
     extract_section,
     format_empty_index,
+    format_empty_pdf_index,
     format_file_index,
     format_heading_list,
     format_outline_list,
@@ -28,6 +29,7 @@ from surf.models import (
     LineCount,
     OutlineLevel,
     OutlineRecord,
+    PageCount,
     PageIndex,
     ParsedLink,
     PdfDocument,
@@ -461,4 +463,13 @@ def test_format_empty_index_reports_lines_and_bytes() -> None:
         "no structural index",
         "lines: 142",
         "bytes: 1685",
+    ]
+
+
+def test_format_empty_pdf_index_reports_pages_and_bytes() -> None:
+    text = format_empty_pdf_index(page_count=PageCount(18), byte_count=ByteCount(13153200))
+    assert text.splitlines() == [
+        "no structural index",
+        "pages: 18",
+        "bytes: 13153200",
     ]
