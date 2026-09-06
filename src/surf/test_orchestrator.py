@@ -9,7 +9,7 @@ import pytest
 from pypdf import PageObject
 
 from surf import __version__
-from surf.models import CliFailure
+from surf.models import CliFailure, CliSuccess
 from surf.orchestrator import build_parser, main, run_argv
 from surf.test_adapters import write_outline_pdf
 
@@ -609,6 +609,44 @@ def test_pdf_same_page_dest_extracts_page(tmp_path: Path) -> None:
     )
     assert "shared-page" in rendered([str(path), "Alpha"])
     assert "shared-page" in rendered([str(path), "Beta"])
+
+
+def _same_page_appendix_pdf(tmp_path: Path) -> Path:
+    path = tmp_path / "appendix.pdf"
+    write_outline_pdf(
+        path,
+        page_count=2,
+        outline=(
+            (
+                "Additional Experimental Details",
+                0,
+                (
+                    ("Retrieval Details", 0, ()),
+                    ("Inference Settings", 0, ()),
+                    ("Prompt Template Example", 0, ()),
+                ),
+            ),
+            ("Societal Impact", 1, ()),
+            ("Later Section", 1, ()),
+        ),
+        page_texts=("appendix-page", "societal-page"),
+    )
+    return path
+
+
+def test_pdf_nested_same_page_heading_paths_extract_dest_page(tmp_path: Path) -> None:
+    path = _same_page_appendix_pdf(tmp_path)
+    cases = (
+        ("Additional Experimental Details#Retrieval Details", "appendix-page", "societal-page"),
+        ("Additional Experimental Details#Inference Settings", "appendix-page", "societal-page"),
+        ("Societal Impact", "societal-page", "appendix-page"),
+    )
+    for heading, present, absent in cases:
+        result = run_argv([str(path), heading])
+        assert isinstance(result, CliSuccess)
+        assert result.body.strip() != ""
+        assert present in result.body
+        assert absent not in result.body
 
 
 def test_pdf_missing_outline_title(tmp_path: Path) -> None:

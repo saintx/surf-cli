@@ -14,6 +14,7 @@ from surf.logic import (
     format_file_index,
     format_heading_list,
     format_outline_list,
+    match_outline_span,
     parse_heading_path,
     parse_headings,
     parse_link,
@@ -381,6 +382,53 @@ def test_extract_outline_same_page_includes_dest_page() -> None:
     later = extract_outline_section(document, hp("Beta"))
     assert later is not None
     assert "\n".join(later.pages) == "shared-page"
+
+
+SAME_PAGE_APPENDIX = PdfDocument(
+    outline=(
+        orec(1, "Additional Experimental Details", 0),
+        orec(2, "Retrieval Details", 0),
+        orec(2, "Inference Settings", 0),
+        orec(2, "Prompt Template Example", 0),
+        orec(1, "Societal Impact", 1),
+        orec(1, "Later Section", 1),
+    ),
+    pages=("appendix-page", "societal-page"),
+)
+
+
+def test_same_page_next_dest_span_extracts_dest_page() -> None:
+    cases = (
+        ("Additional Experimental Details#Retrieval Details", 0),
+        ("Additional Experimental Details#Inference Settings", 0),
+        ("Societal Impact", 1),
+    )
+    for path, dest_page in cases:
+        span = match_outline_span(SAME_PAGE_APPENDIX.outline, hp(path))
+        assert span is not None
+        assert span.start_page == span.end_page == PageIndex(dest_page)
+        assert exclusive_page_end(span) == PageIndex(dest_page + 1)
+
+
+def test_extract_nested_same_page_dests_include_dest_page() -> None:
+    retrieval = extract_outline_section(
+        SAME_PAGE_APPENDIX, hp("Additional Experimental Details#Retrieval Details")
+    )
+    assert retrieval is not None
+    assert retrieval.pages != ()
+    assert "\n".join(retrieval.pages) == "appendix-page"
+
+    inference = extract_outline_section(
+        SAME_PAGE_APPENDIX, hp("Additional Experimental Details#Inference Settings")
+    )
+    assert inference is not None
+    assert inference.pages != ()
+    assert "\n".join(inference.pages) == "appendix-page"
+
+    societal = extract_outline_section(SAME_PAGE_APPENDIX, hp("Societal Impact"))
+    assert societal is not None
+    assert societal.pages != ()
+    assert "\n".join(societal.pages) == "societal-page"
 
 
 def test_extract_outline_level_filter_native_above_six() -> None:
