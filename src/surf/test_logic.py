@@ -6,6 +6,7 @@ from __future__ import annotations
 import textwrap
 
 from surf.logic import (
+    exclusive_page_end,
     extract_outline_section,
     extract_section,
     format_empty_index,
@@ -28,6 +29,7 @@ from surf.models import (
     HeadingText,
     LineCount,
     OutlineLevel,
+    OutlinePageSpan,
     OutlineRecord,
     PageCount,
     PageIndex,
@@ -354,14 +356,28 @@ def test_extract_outline_dest_to_next_dest_and_last_item() -> None:
     assert "\n".join(last.pages) == "other-child"
 
 
-def test_extract_outline_same_page_earlier_item_empty() -> None:
+def test_exclusive_page_end() -> None:
+    def span(start: int | None, end: int | None) -> OutlinePageSpan:
+        return OutlinePageSpan(
+            level=OutlineLevel(1),
+            start_page=None if start is None else PageIndex(start),
+            end_page=None if end is None else PageIndex(end),
+        )
+
+    assert exclusive_page_end(span(29, 29)) == PageIndex(30)
+    assert exclusive_page_end(span(0, 2)) == PageIndex(2)
+    assert exclusive_page_end(span(2, None)) is None
+    assert exclusive_page_end(span(None, 1)) is None
+
+
+def test_extract_outline_same_page_includes_dest_page() -> None:
     document = PdfDocument(
         outline=(orec(1, "Alpha", 0), orec(1, "Beta", 0)),
         pages=("shared-page",),
     )
     earlier = extract_outline_section(document, hp("Alpha"))
     assert earlier is not None
-    assert earlier.pages == ()
+    assert "\n".join(earlier.pages) == "shared-page"
     later = extract_outline_section(document, hp("Beta"))
     assert later is not None
     assert "\n".join(later.pages) == "shared-page"

@@ -20,6 +20,7 @@ from surf.adapters import (
     write_output,
 )
 from surf.logic import (
+    exclusive_page_end,
     extract_section,
     format_empty_index,
     format_empty_pdf_index,
@@ -160,7 +161,7 @@ def _run_pdf(path: Path, options: CliOptions) -> CliResult:
     if span.start_page is None:
         return CliSuccess(body=RenderedBody(""))
     try:
-        pages = read_pdf_pages(path, span.start_page, span.end_page)
+        pages = read_pdf_pages(path, span.start_page, exclusive_page_end(span))
     except PdfIngestError as exc:
         return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(1))
     return CliSuccess(body=RenderedBody("\n".join(pages).rstrip()))

@@ -599,6 +599,18 @@ def test_pdf_nested_path(tmp_path: Path) -> None:
     assert "parent-page" not in output
 
 
+def test_pdf_same_page_dest_extracts_page(tmp_path: Path) -> None:
+    path = tmp_path / "same.pdf"
+    write_outline_pdf(
+        path,
+        page_count=1,
+        outline=(("Alpha", 0, ()), ("Beta", 0, ())),
+        page_texts=("shared-page",),
+    )
+    assert "shared-page" in rendered([str(path), "Alpha"])
+    assert "shared-page" in rendered([str(path), "Beta"])
+
+
 def test_pdf_missing_outline_title(tmp_path: Path) -> None:
     path = _nested_pdf(tmp_path)
     result = run_argv([str(path), "NoSuch"])

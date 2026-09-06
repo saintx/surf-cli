@@ -471,6 +471,17 @@ def match_outline_span(
     )
 
 
+def exclusive_page_end(span: OutlinePageSpan) -> PageIndex | None:
+    """Half-open end page. Same-page next dest includes the dest page."""
+    if span.start_page is None:
+        return None
+    if span.end_page is None:
+        return None
+    if int(span.end_page) <= int(span.start_page):
+        return PageIndex(int(span.start_page) + 1)
+    return span.end_page
+
+
 def extract_outline_section(
     document: PdfDocument,
     heading_path: HeadingPath,
@@ -484,10 +495,11 @@ def extract_outline_section(
     if span.start_page is None:
         return ExtractedOutline(level=span.level, pages=())
     start = int(span.start_page)
-    if span.end_page is None:
+    end = exclusive_page_end(span)
+    if end is None:
         page_slice = document.pages[start:]
     else:
-        page_slice = document.pages[start : int(span.end_page)]
+        page_slice = document.pages[start : int(end)]
     return ExtractedOutline(level=span.level, pages=tuple(page_slice))
 
 
