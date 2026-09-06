@@ -13,6 +13,7 @@ from surf.models import (
     CliTarget,
     ClosedSpan,
     Delimiter,
+    ExtractedOutline,
     ExtractedSection,
     FileRef,
     FrontmatterSplit,
@@ -24,7 +25,9 @@ from surf.models import (
     HeadingText,
     LineCount,
     LineIndex,
+    OutlineLevel,
     OutlineRecord,
+    PageIndex,
     ParsedLink,
     PdfDocument,
     RenderedBody,
@@ -406,25 +409,32 @@ def extract_outline_section(
     document: PdfDocument,
     heading_path: HeadingPath,
     *,
-    level_filter: HeadingLevel | None = None,
-) -> ExtractedSection | None:
+    level_filter: OutlineLevel | None = None,
+) -> ExtractedOutline | None:
     """Extract dest-to-next-dest. Nested containment uses outline indices."""
     outline = document.outline
     segments = heading_path.segments
     if not segments:
         return None
 
-    def containment_end(start_idx: int, start_level: HeadingLevel) -> int:
+    def containment_end(start_idx: int, start_level: OutlineLevel) -> int:
         for j in range(start_idx + 1, len(outline)):
             if outline[j].level <= start_level:
                 return j
         return len(outline)
 
+    def next_dest_page(after_idx: int) -> PageIndex | None:
+        for j in range(after_idx + 1, len(outline)):
+            page = outline[j].page_index
+            if page is not None:
+                return page
+        return None
+
     bound_start = -1
     bound_end = len(outline)
-    prev_level = HeadingLevel(0)
+    prev_level = OutlineLevel(0)
     match_idx: int | None = None
-    match_level: HeadingLevel | None = None
+    match_level: OutlineLevel | None = None
 
     for i, segment in enumerate(segments):
         target = str(segment).lower()
@@ -456,21 +466,14 @@ def extract_outline_section(
 
     start_page = outline[match_idx].page_index
     if start_page is None:
-        return ExtractedSection(
-            level=match_level, lines=(), heading_line_count=HeadingLineCount(0)
-        )
+        return ExtractedOutline(level=match_level, pages=())
 
-    next_idx = match_idx + 1
-    end_page = outline[next_idx].page_index if next_idx < len(outline) else None
+    end_page = next_dest_page(match_idx)
     if end_page is None:
         page_slice = document.pages[int(start_page) :]
     else:
         page_slice = document.pages[int(start_page) : int(end_page)]
-    return ExtractedSection(
-        level=match_level,
-        lines=tuple(page_slice),
-        heading_line_count=HeadingLineCount(0),
-    )
+    return ExtractedOutline(level=match_level, pages=tuple(page_slice))
 
 
 def format_empty_index(*, line_count: LineCount, byte_count: ByteCount) -> RenderedBody:
@@ -497,7 +500,7 @@ def format_heading_list(
 def format_outline_list(
     outline: Sequence[OutlineRecord],
     *,
-    level_filter: HeadingLevel | None = None,
+    level_filter: OutlineLevel | None = None,
 ) -> RenderedBody:
     """List outline items. level_filter is a maximum rank (1 through N)."""
     records = outline

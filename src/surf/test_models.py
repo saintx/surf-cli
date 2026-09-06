@@ -7,7 +7,13 @@ import dataclasses
 
 import pytest
 
-from surf.models import ExtractedSection, HeadingLevel, HeadingLineCount
+from surf.models import (
+    ExtractedOutline,
+    ExtractedSection,
+    HeadingLevel,
+    HeadingLineCount,
+    OutlineLevel,
+)
 
 
 def test_extracted_section_frozen() -> None:
@@ -16,3 +22,9 @@ def test_extracted_section_frozen() -> None:
     )
     with pytest.raises(dataclasses.FrozenInstanceError):
         section.level = HeadingLevel(1)  # type: ignore[misc]
+
+
+def test_extracted_outline_frozen() -> None:
+    extracted = ExtractedOutline(level=OutlineLevel(1), pages=("page",))
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        extracted.level = OutlineLevel(2)  # type: ignore[misc]

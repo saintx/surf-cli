@@ -10,6 +10,7 @@ from typing import NewType
 HeadingText = NewType("HeadingText", str)
 FileRef = NewType("FileRef", str)
 HeadingLevel = NewType("HeadingLevel", int)
+OutlineLevel = NewType("OutlineLevel", int)
 LineIndex = NewType("LineIndex", int)
 PageIndex = NewType("PageIndex", int)
 ScanBuffer = NewType("ScanBuffer", str)
@@ -26,6 +27,7 @@ LineCount = NewType("LineCount", int)
 ByteCount = NewType("ByteCount", int)
 
 type DocumentLines = tuple[str, ...]
+type PageText = str
 
 
 class TexCommand(StrEnum):
@@ -69,7 +71,7 @@ class ClosedSpan:
 
 @dataclass(frozen=True, slots=True)
 class OutlineRecord:
-    level: HeadingLevel
+    level: OutlineLevel
     title: HeadingText
     page_index: PageIndex | None
     top: float | None
@@ -78,7 +80,7 @@ class OutlineRecord:
 @dataclass(frozen=True, slots=True)
 class PdfDocument:
     outline: tuple[OutlineRecord, ...]
-    pages: tuple[str, ...]
+    pages: tuple[PageText, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +103,12 @@ class ExtractedSection:
 
 
 @dataclass(frozen=True, slots=True)
+class ExtractedOutline:
+    level: OutlineLevel
+    pages: tuple[PageText, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CliOptions:
     file_ref: FileRef | None
     heading_path: HeadingPath | None
@@ -108,7 +116,7 @@ class CliOptions:
     frontmatter_only: bool
     full: bool
     no_heading: bool
-    level_filter: HeadingLevel | None
+    level_filter: int | None
     output_ref: FileRef | None
 
 

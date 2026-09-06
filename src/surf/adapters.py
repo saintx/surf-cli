@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from pathlib import Path
+from typing import cast
 
 from pypdf import PdfReader
 from pypdf.generic import Destination
@@ -13,14 +14,17 @@ from surf.models import (
     ByteCount,
     DocumentLines,
     FileRef,
-    HeadingLevel,
     HeadingText,
+    OutlineLevel,
     OutlineRecord,
     PageIndex,
+    PageText,
     PdfDocument,
     RenderedBody,
     TexIncludeRelPath,
 )
+
+type PypdfOutlineItem = Destination | list[PypdfOutlineItem]
 
 
 class PdfIngestError(Exception):
@@ -77,12 +81,12 @@ def _optional_float(value: object) -> float | None:
                 return None
 
 
-def _outline_record(reader: PdfReader, item: Destination, *, level: int) -> OutlineRecord:
+def _outline_record(reader: PdfReader, item: Destination, *, level: OutlineLevel) -> OutlineRecord:
     title = item.title
     page_number = reader.get_destination_page_number(item)
     page_index = PageIndex(page_number) if page_number is not None else None
     return OutlineRecord(
-        level=HeadingLevel(level),
+        level=level,
         title=HeadingText("" if title is None else str(title)),
         page_index=page_index,
         top=_optional_float(item.top),
@@ -91,14 +95,15 @@ def _outline_record(reader: PdfReader, item: Destination, *, level: int) -> Outl
 
 def _walk_outline(
     reader: PdfReader,
-    items: Iterable[object],
+    items: Iterable[PypdfOutlineItem],
     *,
-    level: int,
+    level: OutlineLevel,
 ) -> Iterator[OutlineRecord]:
     for item in items:
         match item:
             case list():
-                yield from _walk_outline(reader, item, level=level + 1)
+                nested = cast(list[PypdfOutlineItem], item)
+                yield from _walk_outline(reader, nested, level=OutlineLevel(int(level) + 1))
             case Destination():
                 yield _outline_record(reader, item, level=level)
 
@@ -108,8 +113,9 @@ def read_pdf(path: Path) -> PdfDocument:
         reader = PdfReader(path)
         if reader.is_encrypted:
             raise PdfIngestError(f"could not read PDF: {path}")
-        outline = tuple(_walk_outline(reader, reader.outline, level=1))
-        pages = tuple((page.extract_text() or "") for page in reader.pages)
+        outline_root = cast(Iterable[PypdfOutlineItem], reader.outline)
+        outline = tuple(_walk_outline(reader, outline_root, level=OutlineLevel(1)))
+        pages: tuple[PageText, ...] = tuple((page.extract_text() or "") for page in reader.pages)
         return PdfDocument(outline=outline, pages=pages)
     except PdfIngestError:
         raise

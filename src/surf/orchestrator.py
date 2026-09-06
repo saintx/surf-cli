@@ -46,6 +46,7 @@ from surf.models import (
     HeadingPathRemainder,
     HeadingText,
     LineCount,
+    OutlineLevel,
     RenderedBody,
 )
 
@@ -118,7 +119,6 @@ def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
         heading_path = parse_heading_path(HeadingPathRemainder(args.heading))
         if heading_path is None:
             heading_path = HeadingPath(segments=(HeadingText(args.heading),))
-    level_filter = HeadingLevel(args.level) if args.level is not None else None
     output_ref = FileRef(args.output) if args.output else None
     return CliOptions(
         file_ref=parsed.file_ref,
@@ -127,7 +127,7 @@ def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
         frontmatter_only=bool(args.frontmatter_only),
         full=bool(args.full),
         no_heading=bool(args.no_heading),
-        level_filter=level_filter,
+        level_filter=args.level,
         output_ref=output_ref,
     )
 
@@ -137,20 +137,17 @@ def _run_pdf(path: Path, options: CliOptions) -> CliResult:
         document = read_pdf(path)
     except PdfIngestError as exc:
         return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(1))
+    outline_level = OutlineLevel(options.level_filter) if options.level_filter is not None else None
     if options.list_headings:
-        return CliSuccess(
-            body=format_outline_list(document.outline, level_filter=options.level_filter)
-        )
+        return CliSuccess(body=format_outline_list(document.outline, level_filter=outline_level))
     if options.frontmatter_only:
         return CliSuccess(body=RenderedBody(""))
     if options.heading_path is None:
-        return CliSuccess(
-            body=format_outline_list(document.outline, level_filter=options.level_filter)
-        )
+        return CliSuccess(body=format_outline_list(document.outline, level_filter=outline_level))
     extracted = extract_outline_section(
         document,
         options.heading_path,
-        level_filter=options.level_filter,
+        level_filter=outline_level,
     )
     if extracted is None:
         remainder = "#".join(str(seg) for seg in options.heading_path.segments)
@@ -158,7 +155,7 @@ def _run_pdf(path: Path, options: CliOptions) -> CliResult:
             message=ErrorMessage(f'heading "{remainder}" not found in {path}.'),
             exit_code=ExitCode(1),
         )
-    return CliSuccess(body=RenderedBody("\n".join(extracted.lines).rstrip()))
+    return CliSuccess(body=RenderedBody("\n".join(extracted.pages).rstrip()))
 
 
 def run(options: CliOptions) -> CliResult:
@@ -196,14 +193,13 @@ def run(options: CliOptions) -> CliResult:
         else parse_headings(split.body)
     )
     empty_index = format_empty_index(line_count=line_count, byte_count=byte_count)
+    heading_level = HeadingLevel(options.level_filter) if options.level_filter is not None else None
 
     if options.list_headings:
         if not headings:
             return CliSuccess(body=empty_index)
         return CliSuccess(
-            body=format_heading_list(
-                split.body, headings=headings, level_filter=options.level_filter
-            )
+            body=format_heading_list(split.body, headings=headings, level_filter=heading_level)
         )
     if options.frontmatter_only:
         if split.frontmatter is None:
@@ -214,13 +210,13 @@ def run(options: CliOptions) -> CliResult:
         if not headings and split.frontmatter is None:
             return CliSuccess(body=empty_index)
         return CliSuccess(
-            body=format_file_index(split, headings=headings, level_filter=options.level_filter)
+            body=format_file_index(split, headings=headings, level_filter=heading_level)
         )
 
     extracted = extract_section(
         split.body,
         options.heading_path,
-        level_filter=options.level_filter,
+        level_filter=heading_level,
         headings=headings,
     )
     if extracted is None:
