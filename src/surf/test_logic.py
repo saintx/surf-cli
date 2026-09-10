@@ -537,3 +537,60 @@ def test_format_empty_pdf_index_reports_pages_and_bytes() -> None:
         "pages: 18",
         "bytes: 13153200",
     ]
+
+
+FENCED_MD = """# Doc
+
+## Real
+
+```markdown
+# Not a heading
+## Also not
+```
+
+~~~
+### Tilde fenced
+~~~
+
+````md
+```
+# Nested shorter fence stays open
+```
+````
+
+## After
+
+    # Indented code, not a heading
+
+```
+# Unclosed fence runs to the end
+## Still code
+"""
+
+
+def test_parse_headings_skips_fenced_code_blocks() -> None:
+    headings = parse_headings(FENCED_MD.splitlines())
+    assert [str(record.text) for record in headings] == ["Doc", "Real", "After"]
+
+
+def test_extract_section_keeps_fenced_hash_lines_in_body() -> None:
+    lines = FENCED_MD.splitlines()
+    result = extract_section(lines, hp("Real"))
+    assert result is not None
+    body = "\n".join(result.lines)
+    assert "# Not a heading" in body
+    assert "### Tilde fenced" in body
+    assert "# Nested shorter fence stays open" in body
+    assert "## After" not in body
+
+
+def test_backtick_fence_info_string_with_backtick_is_not_a_fence() -> None:
+    lines = ["# Top", "``` not `a` fence", "## Heading", "```"]
+    headings = parse_headings(lines)
+    assert [str(record.text) for record in headings] == ["Top", "Heading"]
+
+
+def test_closing_fence_must_match_char_and_length() -> None:
+    lines = ["# Top", "````", "~~~~", "```", "## Inside", "````", "## Outside"]
+    headings = parse_headings(lines)
+    assert [str(record.text) for record in headings] == ["Top", "Outside"]

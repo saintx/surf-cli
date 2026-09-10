@@ -41,6 +41,8 @@ from surf.models import (
 )
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
+_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_FENCE_CLOSE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*$")
 _TEX_LEVEL: Mapping[TexCommand, HeadingLevel] = {
     TexCommand.PART: HeadingLevel(1),
     TexCommand.CHAPTER: HeadingLevel(2),
@@ -108,9 +110,42 @@ def parse_link(target: CliTarget) -> ParsedLink:
     return ParsedLink(file_ref=FileRef(stripped) if stripped else None, heading_path=None)
 
 
+def _fence_open(line: str) -> str | None:
+    """Return the fence string when line opens a fenced code block, else None.
+
+    CommonMark: up to three spaces of indent, then three or more backticks or
+    tildes. A backtick fence's info string may not contain a backtick.
+    """
+    m = _FENCE_OPEN_RE.match(line)
+    if m is None:
+        return None
+    fence, info = m.group(1), m.group(2)
+    if fence[0] == "`" and "`" in info:
+        return None
+    return fence
+
+
+def _fence_closes(line: str, open_fence: str) -> bool:
+    """A closing fence uses the same character and is at least as long."""
+    m = _FENCE_CLOSE_RE.match(line)
+    if m is None:
+        return False
+    fence = m.group(1)
+    return fence[0] == open_fence[0] and len(fence) >= len(open_fence)
+
+
 def parse_headings(lines: Sequence[str]) -> tuple[HeadingRecord, ...]:
+    """ATX headings outside fenced code blocks. A `#` line inside a fence is code."""
     records: list[HeadingRecord] = []
+    open_fence: str | None = None
     for i, line in enumerate(lines):
+        if open_fence is not None:
+            if _fence_closes(line, open_fence):
+                open_fence = None
+            continue
+        open_fence = _fence_open(line)
+        if open_fence is not None:
+            continue
         m = _HEADING_RE.match(line)
         if m:
             records.append(
