@@ -42,19 +42,11 @@ Resolve with `surf` against the section heading; do not bulk-ingest a whole refe
 | Platform aggregation (batch section extraction) | `surf references/usage.md "Platform aggregation (batch section extraction)"` |
 | Additional options | `surf references/usage.md "Additional options"` |
 
-### Whitepaper (TeX and PDF examples)
+### TeX and PDF
 
-The same paper ships as `references/surf.tex` and `references/surf.pdf`; both list the same tree, so any row below works against either file.
+`references/surf.tex` and `references/surf.pdf` are one document in two forms. The same address works on either.
 
 | Intent | Section extraction |
 |--------|--------------------|
-| List a TeX paper's sections | `surf references/surf.tex --list` |
-| List a PDF's outline | `surf references/surf.pdf --list` |
-| Read the abstract | `surf references/surf.tex "abstract"` |
-| Why surf exists | `surf references/surf.pdf "Background"` |
-| What a thin index looks like | `surf references/surf.tex "A Thin Index Shaped by Intent"` |
-| Who composes context | `surf references/surf.pdf "Agentic Context Composition"` |
-| Check a skill mechanically | `surf references/surf.tex "Skills You Can Check"` |
-| Compose indexes across skills | `surf references/surf.pdf "Indexes over Indexes"` |
-| Formats and corpora surf addresses | `surf references/surf.tex "Markdown, TeX, and PDF"` |
-| How the paper checks itself | `surf references/surf.pdf "This Paper"` |
+| Extract a section from TeX | `surf references/surf.tex "Markdown, TeX, and PDF"` |
+| Extract a section from PDF | `surf references/surf.pdf "Markdown, TeX, and PDF"` |
