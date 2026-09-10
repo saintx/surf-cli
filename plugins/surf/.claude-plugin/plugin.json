@@ -1,6 +1,6 @@
 {
   "name": "surf",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Extract a markdown heading, TeX section, or PDF outline item without loading the rest of the file. Skill for agents using the surf CLI.",
   "author": { "name": "Alexander R. Saint Croix", "email": "alex@saintx.us" },
   "homepage": "https://github.com/saintx/surf-cli",

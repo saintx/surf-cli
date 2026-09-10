@@ -36,7 +36,7 @@ metadata:
     github_username: saintx
     email: alex@saintx.us
     twitter: alexsaintx
-  surf-version: "0.7.0"
+  surf-version: "0.7.1"
 ---
 
 - Surf — About
