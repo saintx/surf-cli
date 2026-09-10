@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "surf-cli"
 version = "0.7.0"
-description = "Extract markdown, TeX, or PDF outline sections by heading with Obsidian link support"
+description = "List headings, or extract one section by name, from Markdown, TeX, or PDF."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Alexander R. Saint Croix", email = "alex@saintx.us" }]
