@@ -92,6 +92,7 @@ def test_resolve_existing(tmp_path: Path) -> None:
 
 
 def test_resolve_auto_md(tmp_path: Path) -> None:
+    """spec: link-targets#Implicit .md suffix"""
     path = tmp_path / "notes.md"
     path.write_text("# Hi\n")
     stem = path.with_suffix("")
@@ -110,6 +111,9 @@ def test_read_document(tmp_path: Path) -> None:
 
 
 def test_read_document_strips_utf8_bom(tmp_path: Path) -> None:
+    """spec: what-counts-as-a-heading#A byte-order mark does not hide the first heading
+    spec: what-counts-as-a-heading#Extract of a BOM-prefixed section drops the BOM
+    """
     path = tmp_path / "bom.tex"
     path.write_bytes(b"\xef\xbb\xbf\\section{Related Work}\n")
     assert read_document(path)[0] == r"\section{Related Work}"
@@ -132,12 +136,14 @@ def test_document_byte_count_matches_stat(tmp_path: Path) -> None:
 
 
 def test_write_output_file(tmp_path: Path) -> None:
+    """spec: section-extraction#Output written to a file"""
     dest = tmp_path / "out.md"
     write_output(RenderedBody("- Introduction"), FileRef(str(dest)))
     assert "- Introduction" in dest.read_text()
 
 
 def test_read_pdf_nested_outline(tmp_path: Path) -> None:
+    """spec: pdf-addressing#Outline is the tree"""
     path = tmp_path / "nested.pdf"
     write_outline_pdf(
         path,
@@ -168,6 +174,7 @@ def test_read_pdf_empty_outline(tmp_path: Path) -> None:
 
 
 def test_read_pdf_garbage_raises(tmp_path: Path) -> None:
+    """spec: errors-and-exit-codes#Unreadable PDF"""
     path = tmp_path / "garbage.pdf"
     path.write_bytes(b"not a pdf")
     with pytest.raises(PdfIngestError):
