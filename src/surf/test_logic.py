@@ -134,6 +134,7 @@ def link(target: str) -> ParsedLink:
 
 
 def test_parse_link_wikilink_with_heading() -> None:
+    """spec: link-targets#Wikilink with a heading extracts that section"""
     assert link("[[notes/foo#Bar]]") == ParsedLink(
         file_ref=FileRef("notes/foo"),
         heading_path=HeadingPath(segments=(HeadingText("Bar"),)),
@@ -187,6 +188,7 @@ def test_parse_link_plain() -> None:
 
 
 def test_parse_link_nested_remainder() -> None:
+    """spec: link-targets#Nested path inside a link"""
     expected = ParsedLink(
         file_ref=FileRef("note"),
         heading_path=HeadingPath(segments=(HeadingText("Foo"), HeadingText("Baz"))),
@@ -203,6 +205,7 @@ def test_parse_link_nested_remainder() -> None:
 
 
 def test_split_frontmatter_present() -> None:
+    """spec: frontmatter-only#Frontmatter block is echoed, not parsed"""
     split = split_frontmatter(SAMPLE_MD.splitlines())
     assert split.frontmatter is not None
     assert split.frontmatter[0] == "---"
@@ -226,6 +229,7 @@ def test_parse_headings_levels() -> None:
 
 
 def test_extract_h2() -> None:
+    """spec: section-extraction#Section stops at the next heading of the same or higher level"""
     split = split_frontmatter(SAMPLE_MD.splitlines())
     result = extract_section(split.body, hp("Details"))
     assert result is not None
@@ -236,6 +240,7 @@ def test_extract_h2() -> None:
 
 
 def test_extract_bare_baz_first_hit() -> None:
+    """spec: section-extraction#Bare name matches the first occurrence"""
     result = extract_section(NESTED_MD.splitlines(), hp("Baz"))
     assert result is not None
     text = "\n".join(result.lines)
@@ -244,6 +249,7 @@ def test_extract_bare_baz_first_hit() -> None:
 
 
 def test_extract_bar_baz() -> None:
+    """spec: section-extraction#Nested path selects the child inside the named parent"""
     result = extract_section(NESTED_MD.splitlines(), hp("Bar#Baz"))
     assert result is not None
     text = "\n".join(result.lines)
@@ -252,6 +258,7 @@ def test_extract_bar_baz() -> None:
 
 
 def test_extract_nested_foo_baz() -> None:
+    """spec: section-extraction#Nested path selects the child inside the named parent"""
     result = extract_section(NESTED_MD.splitlines(), hp("Foo#Baz"))
     assert result is not None
     assert int(result.level) == 3
@@ -261,6 +268,7 @@ def test_extract_nested_foo_baz() -> None:
 
 
 def test_extract_nested_through_h6() -> None:
+    """spec: section-extraction#Nested path selects the child inside the named parent"""
     result = extract_section(NESTED_MD.splitlines(), hp("A#B#C#D#E"))
     assert result is not None
     assert int(result.level) == 6
@@ -268,10 +276,12 @@ def test_extract_nested_through_h6() -> None:
 
 
 def test_extract_sibling_not_child() -> None:
+    """spec: section-extraction#Nested path selects the child inside the named parent"""
     assert extract_section(SIBLING_MD.splitlines(), hp("Foo#Baz")) is None
 
 
 def test_extract_level_filter() -> None:
+    """spec: section-extraction#Heading at another rank is not found"""
     split = split_frontmatter(SAMPLE_MD.splitlines())
     assert extract_section(split.body, hp("Introduction"), level_filter=HeadingLevel(2)) is None
 
@@ -284,6 +294,7 @@ def test_format_heading_list() -> None:
 
 
 def test_format_heading_list_level_is_max_depth() -> None:
+    """spec: heading-tree#Listing limited to the top N ranks"""
     split = split_frontmatter(SAMPLE_MD.splitlines())
     text = format_heading_list(split.body, level_filter=HeadingLevel(2))
     lines = text.splitlines()
@@ -295,6 +306,7 @@ def test_format_heading_list_level_is_max_depth() -> None:
 
 
 def test_format_outline_list() -> None:
+    """spec: pdf-addressing#Outline is the tree"""
     outline = (
         OutlineRecord(
             level=OutlineLevel(1),
@@ -349,6 +361,7 @@ def test_extract_outline_nested_path_selects_child_of_parent() -> None:
 
 
 def test_extract_outline_dest_to_next_dest_and_last_item() -> None:
+    """spec: pdf-addressing#Extract is page-granular"""
     parent = extract_outline_section(NESTED_OUTLINE, hp("Parent"))
     assert parent is not None
     assert "\n".join(parent.pages) == "parent-page"
@@ -372,6 +385,7 @@ def test_exclusive_page_end() -> None:
 
 
 def test_extract_outline_same_page_includes_dest_page() -> None:
+    """spec: pdf-addressing#Extract is page-granular"""
     document = PdfDocument(
         outline=(orec(1, "Alpha", 0), orec(1, "Beta", 0)),
         pages=("shared-page",),
@@ -411,6 +425,7 @@ def test_same_page_next_dest_span_extracts_dest_page() -> None:
 
 
 def test_extract_nested_same_page_dests_include_dest_page() -> None:
+    """spec: pdf-addressing#Extract is page-granular"""
     retrieval = extract_outline_section(
         SAME_PAGE_APPENDIX, hp("Additional Experimental Details#Retrieval Details")
     )
@@ -432,6 +447,9 @@ def test_extract_nested_same_page_dests_include_dest_page() -> None:
 
 
 def test_extract_outline_level_filter_native_above_six() -> None:
+    """spec: pdf-addressing#Rank is the outline's native rank
+    spec: pdf-addressing#Wrong rank on a PDF bookmark is not found
+    """
     document = PdfDocument(
         outline=(orec(7, "Deep", 0),),
         pages=("deep-page",),
@@ -444,6 +462,7 @@ def test_extract_outline_level_filter_native_above_six() -> None:
 
 
 def test_extract_outline_case_insensitive_strip() -> None:
+    """spec: section-extraction#Matching ignores case"""
     document = PdfDocument(
         outline=(orec(1, "  Mixed Case  ", 0),),
         pages=("mixed-page",),
@@ -488,6 +507,7 @@ def test_extract_outline_skips_ghost_dest_to_later_dest() -> None:
 
 
 def test_format_file_index_yaml_and_headings() -> None:
+    """spec: file-map#Map of a markdown file with frontmatter"""
     split = split_frontmatter(SAMPLE_MD.splitlines())
     text = format_file_index(split)
     assert "title: Test Document" in text
@@ -498,6 +518,7 @@ def test_format_file_index_yaml_and_headings() -> None:
 
 
 def test_format_file_index_yaml_only() -> None:
+    """spec: no-structural-index#Frontmatter but no headings"""
     split = split_frontmatter(textwrap.dedent("""\
             ---
             title: YAML Only
@@ -511,6 +532,7 @@ def test_format_file_index_yaml_only() -> None:
 
 
 def test_format_file_index_headings_only() -> None:
+    """spec: file-map#Map of a file without frontmatter"""
     split = split_frontmatter(SAMPLE_NO_FM.splitlines())
     text = format_file_index(split)
     assert split.frontmatter is None
@@ -522,6 +544,7 @@ def test_format_file_index_headings_only() -> None:
 
 
 def test_format_empty_index_reports_lines_and_bytes() -> None:
+    """spec: no-structural-index#Markdown with no headings"""
     text = format_empty_index(line_count=LineCount(142), byte_count=ByteCount(1685))
     assert text.splitlines() == [
         "no structural index",
@@ -531,6 +554,7 @@ def test_format_empty_index_reports_lines_and_bytes() -> None:
 
 
 def test_format_empty_pdf_index_reports_pages_and_bytes() -> None:
+    """spec: pdf-addressing#PDF without an outline"""
     text = format_empty_pdf_index(page_count=PageCount(18), byte_count=ByteCount(13153200))
     assert text.splitlines() == [
         "no structural index",
@@ -569,11 +593,15 @@ FENCED_MD = """# Doc
 
 
 def test_parse_headings_skips_fenced_code_blocks() -> None:
+    """spec: what-counts-as-a-heading#ATX headings inside fenced code blocks are ignored
+    spec: what-counts-as-a-heading#Fence rules follow CommonMark
+    """
     headings = parse_headings(FENCED_MD.splitlines())
     assert [str(record.text) for record in headings] == ["Doc", "Real", "After"]
 
 
 def test_extract_section_keeps_fenced_hash_lines_in_body() -> None:
+    """spec: what-counts-as-a-heading#Fenced heading text is returned inside its section"""
     lines = FENCED_MD.splitlines()
     result = extract_section(lines, hp("Real"))
     assert result is not None
@@ -585,12 +613,14 @@ def test_extract_section_keeps_fenced_hash_lines_in_body() -> None:
 
 
 def test_backtick_fence_info_string_with_backtick_is_not_a_fence() -> None:
+    """spec: what-counts-as-a-heading#Fence rules follow CommonMark"""
     lines = ["# Top", "``` not `a` fence", "## Heading", "```"]
     headings = parse_headings(lines)
     assert [str(record.text) for record in headings] == ["Top", "Heading"]
 
 
 def test_closing_fence_must_match_char_and_length() -> None:
+    """spec: what-counts-as-a-heading#Fence rules follow CommonMark"""
     lines = ["# Top", "````", "~~~~", "```", "## Inside", "````", "## Outside"]
     headings = parse_headings(lines)
     assert [str(record.text) for record in headings] == ["Top", "Outside"]

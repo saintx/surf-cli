@@ -86,6 +86,7 @@ def rendered(argv: list[str]) -> str:
 
 
 def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    """spec: command-line#Version flag prints the installed version"""
     parser = build_parser()
     with pytest.raises(SystemExit) as exc_info:
         parser.parse_args(["--version"])
@@ -95,6 +96,10 @@ def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_extract_details(sample_file: Path) -> None:
+    """spec: command-line#Positionals are target then heading
+    spec: section-extraction#One section, with its children
+    spec: section-extraction#Section stops at the next heading of the same or higher level
+    """
     output = rendered([str(sample_file), "Details"])
     assert "title: Test Document" not in output
     assert "## Details" in output
@@ -102,6 +107,7 @@ def test_extract_details(sample_file: Path) -> None:
 
 
 def test_no_heading_does_not_dump(sample_file: Path) -> None:
+    """spec: file-map#Map of a markdown file with frontmatter"""
     output = rendered([str(sample_file)])
     assert "title: Test Document" in output
     assert "- Introduction" in output
@@ -110,6 +116,7 @@ def test_no_heading_does_not_dump(sample_file: Path) -> None:
 
 
 def test_list_level_filters_markdown_as_max_depth(tmp_path: Path) -> None:
+    """spec: heading-tree#Listing limited to the top N ranks"""
     path = tmp_path / "sample.md"
     path.write_text("# Introduction\n\n## Details\n\n### Sub-details\n")
     output = rendered(["--list", "--level", "2", str(path)])
@@ -118,11 +125,15 @@ def test_list_level_filters_markdown_as_max_depth(tmp_path: Path) -> None:
 
 
 def test_list_level_1_markdown_is_hash_not_hashhash(sample_file: Path) -> None:
+    """spec: heading-tree#Rank 1 is the top of the tree"""
     output = rendered(["--list", "--level", "1", str(sample_file)])
     assert output.splitlines() == ["- Introduction"]
 
 
 def test_markdown_hashhash_only_still_needs_level_2(tmp_path: Path) -> None:
+    """spec: heading-tree#Rank 1 is the top of the tree
+    spec: heading-tree#Listing indents a heading by its rank
+    """
     path = tmp_path / "notes.md"
     path.write_text("## Details\n\nbody\n")
     assert "Details" not in rendered(["--list", "--level", "1", str(path)])
@@ -130,6 +141,7 @@ def test_markdown_hashhash_only_still_needs_level_2(tmp_path: Path) -> None:
 
 
 def test_list_headings(sample_file: Path) -> None:
+    """spec: heading-tree#Tree without frontmatter"""
     output = rendered(["--list", str(sample_file)])
     assert "- Introduction" in output
     assert "  - Details" in output
@@ -137,6 +149,7 @@ def test_list_headings(sample_file: Path) -> None:
 
 
 def test_frontmatter_only(sample_file: Path) -> None:
+    """spec: frontmatter-only#Frontmatter of a markdown file"""
     output = rendered(["-f", str(sample_file)])
     assert "title: Test Document" in output
     assert "- Introduction" not in output
@@ -144,18 +157,24 @@ def test_frontmatter_only(sample_file: Path) -> None:
 
 
 def test_nested_path(nested_file: Path) -> None:
+    """spec: section-extraction#Nested path selects the child inside the named parent
+    spec: link-targets#Wikilink with a heading extracts that section
+    spec: link-targets#Nested path inside a link
+    """
     output = rendered([f"[[{nested_file}#Foo#Baz]]"])
     assert "Foo Baz body" in output
     assert "Bar Baz body" not in output
 
 
 def test_missing_file() -> None:
+    """spec: errors-and-exit-codes#Missing file"""
     output = rendered(["/nonexistent/file.md"])
     assert "Error" in output
     assert "not found" in output.lower()
 
 
 def test_output_to_file(sample_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: section-extraction#Output written to a file"""
     outfile = tmp_path / "out.md"
     monkeypatch.setattr(
         "sys.argv",
@@ -182,6 +201,9 @@ def test_tex_list_headings(tex_file: Path) -> None:
 
 
 def test_tex_extract_named_section(tex_file: Path) -> None:
+    """spec: section-extraction#Section stops at the next heading of the same or higher level
+    spec: tex-addressing#Extract stops at the next command of the same or higher rank
+    """
     output = rendered([str(tex_file), "What this corpus is"])
     assert r"\section{What this corpus is}" in output
     assert "corpus body" in output
@@ -190,6 +212,7 @@ def test_tex_extract_named_section(tex_file: Path) -> None:
 
 
 def test_tex_missing_heading(tex_file: Path) -> None:
+    """spec: errors-and-exit-codes#Heading not found"""
     result = run_argv([str(tex_file), "No such heading"])
     assert isinstance(result, CliFailure)
     assert result.exit_code == 1
@@ -197,6 +220,7 @@ def test_tex_missing_heading(tex_file: Path) -> None:
 
 
 def test_tex_no_heading_returns_index(tex_file: Path) -> None:
+    """spec: file-map#Map of a TeX or PDF file"""
     output = rendered([str(tex_file)])
     assert output != ""
     assert "- What this corpus is" in output.splitlines()
@@ -206,6 +230,7 @@ def test_tex_no_heading_returns_index(tex_file: Path) -> None:
 
 
 def test_md_suffix_keeps_atx_not_tex_commands(tmp_path: Path) -> None:
+    """spec: what-counts-as-a-heading#TeX commands in a markdown file are text"""
     path = tmp_path / "sample.md"
     path.write_text(MD_WITH_TEX_COMMAND)
     output = rendered(["--list", str(path)])
@@ -214,6 +239,9 @@ def test_md_suffix_keeps_atx_not_tex_commands(tmp_path: Path) -> None:
 
 
 def test_tex_bom_prefixed_list_and_extract(tmp_path: Path) -> None:
+    """spec: what-counts-as-a-heading#A byte-order mark does not hide the first heading
+    spec: what-counts-as-a-heading#Extract of a BOM-prefixed section drops the BOM
+    """
     path = tmp_path / "bom.tex"
     path.write_bytes(b"\xef\xbb\xbf\\section{Related Work}\nbody\n")
     listed = rendered(["--list", str(path)])
@@ -225,6 +253,7 @@ def test_tex_bom_prefixed_list_and_extract(tmp_path: Path) -> None:
 
 
 def test_tex_list_level_filters_to_sections(tex_file: Path) -> None:
+    """spec: heading-tree#Rank 1 on TeX is the shallowest command in the file"""
     output = rendered(["--list", "--level", "1", str(tex_file)])
     assert "What this corpus is" in output
     assert "Sibling" in output
@@ -232,6 +261,10 @@ def test_tex_list_level_filters_to_sections(tex_file: Path) -> None:
 
 
 def test_tex_extract_level_1_hits_section_not_subsection(tex_file: Path) -> None:
+    """spec: section-extraction#One section, with its children
+    spec: section-extraction#Exact rank on extract
+    spec: section-extraction#Heading at another rank is not found
+    """
     output = rendered(["--level", "1", str(tex_file), "What this corpus is"])
     assert "corpus body" in output
     assert "sub body" in output
@@ -240,7 +273,9 @@ def test_tex_extract_level_1_hits_section_not_subsection(tex_file: Path) -> None
 
 
 def test_tex_article_level_1_lists_section_not_empty(tmp_path: Path) -> None:
-    """0.4.2 stored \\section at rank 3, so --level 1 printed nothing."""
+    """0.4.2 stored \\section at rank 3, so --level 1 printed nothing.
+    spec: heading-tree#Rank 1 on TeX is the shallowest command in the file
+    """
     path = tmp_path / "main.tex"
     path.write_text(
         "\\section{Introduction}\nintro\n"
@@ -254,6 +289,10 @@ def test_tex_article_level_1_lists_section_not_empty(tmp_path: Path) -> None:
 
 
 def test_tex_article_list_level_is_max_depth_extract_is_exact(tmp_path: Path) -> None:
+    """spec: section-extraction#Exact rank on extract
+    spec: section-extraction#Heading at another rank is not found
+    spec: heading-tree#Listing limited to the top N ranks
+    """
     path = tmp_path / "main.tex"
     path.write_text(
         "\\section{Introduction}\nintro\n"
@@ -297,6 +336,10 @@ def test_tex_book_list_level_is_max_depth(tmp_path: Path) -> None:
 
 
 def test_tex_input_master_level_1_lists_chapter_sections(tmp_path: Path) -> None:
+    """spec: tex-addressing#Included files expand
+    spec: tex-addressing#Included section extracts with its body
+    spec: heading-tree#Rank 1 on TeX is the shallowest command in the file
+    """
     chapters = tmp_path / "chapters"
     chapters.mkdir()
     (chapters / "1_introduction.tex").write_text("\\section{Introduction}\n\nintro body\n")
@@ -318,6 +361,9 @@ def test_tex_input_master_level_1_lists_chapter_sections(tmp_path: Path) -> None
 
 
 def test_tex_no_heading_drops_wrapped_title_lines(tmp_path: Path) -> None:
+    """spec: section-extraction#Heading line omitted
+    spec: tex-addressing#Wrapped title is dropped whole by --no-heading
+    """
     path = tmp_path / "wrap.tex"
     path.write_text(
         "\\section{Low Dimensions Suffice: Proof of \n"
@@ -337,6 +383,9 @@ def test_tex_no_heading_drops_wrapped_title_lines(tmp_path: Path) -> None:
 
 
 def test_tex_input_master_lists_and_extracts_chapter_headings(tmp_path: Path) -> None:
+    """spec: tex-addressing#Included files expand
+    spec: tex-addressing#Included section extracts with its body
+    """
     chapters = tmp_path / "chapters"
     chapters.mkdir()
     (chapters / "1_introduction.tex").write_text("\\section{Introduction}\n\nintro body\n")
@@ -356,6 +405,9 @@ def test_tex_input_master_lists_and_extracts_chapter_headings(tmp_path: Path) ->
 
 
 def test_tex_nested_input_resolves_from_master_dir(tmp_path: Path) -> None:
+    """spec: tex-addressing#Included files expand
+    spec: tex-addressing#Included section extracts with its body
+    """
     chapters = tmp_path / "chapters"
     chapters.mkdir()
     tables = tmp_path / "tables"
@@ -375,6 +427,7 @@ def test_tex_nested_input_resolves_from_master_dir(tmp_path: Path) -> None:
 
 
 def test_tex_commented_input_is_not_expanded(tmp_path: Path) -> None:
+    """spec: tex-addressing#What does not expand"""
     (tmp_path / "secret.tex").write_text("\\section{Secret}\n")
     master = tmp_path / "main.tex"
     master.write_text("% \\input{secret}\n\\section{Visible}\n")
@@ -384,6 +437,7 @@ def test_tex_commented_input_is_not_expanded(tmp_path: Path) -> None:
 
 
 def test_tex_includegraphics_is_not_expanded(tmp_path: Path) -> None:
+    """spec: tex-addressing#What does not expand"""
     (tmp_path / "fig.tex").write_text("\\section{Not a figure}\n")
     master = tmp_path / "main.tex"
     master.write_text("\\includegraphics{fig}\n\\section{Here}\n")
@@ -392,6 +446,7 @@ def test_tex_includegraphics_is_not_expanded(tmp_path: Path) -> None:
 
 
 def test_tex_missing_input_keeps_other_headings(tmp_path: Path) -> None:
+    """spec: tex-addressing#What does not expand"""
     master = tmp_path / "main.tex"
     master.write_text("\\input{chapters/missing}\n\\section{Here}\n")
     listed = rendered(["--list", str(master)])
@@ -407,6 +462,7 @@ def test_tex_input_cycle_does_not_hang(tmp_path: Path) -> None:
 
 
 def test_md_input_command_is_not_expanded(tmp_path: Path) -> None:
+    """spec: what-counts-as-a-heading#TeX commands in a markdown file are text"""
     (tmp_path / "child.md").write_text("# Secret\n")
     path = tmp_path / "sample.md"
     path.write_text("\\input{child}\n# Real\n")
@@ -415,6 +471,7 @@ def test_md_input_command_is_not_expanded(tmp_path: Path) -> None:
 
 
 def test_tex_multiline_title_list_and_extract(tmp_path: Path) -> None:
+    """spec: tex-addressing#Title forms that become addresses"""
     path = tmp_path / "wrap.tex"
     path.write_text(
         "\\section{Low Dimensions Suffice: Proof of \n"
@@ -441,6 +498,7 @@ def empty_index_text(path: Path, contents: str) -> str:
 
 
 def test_headingless_tex_reports_empty_index_not_body(tmp_path: Path) -> None:
+    """spec: no-structural-index#TeX with no sectioning commands"""
     path = tmp_path / "macros.tex"
     expected = empty_index_text(path, "\\newcommand{\\foo}{bar}\n" * 3)
     listed = rendered(["--list", str(path)])
@@ -452,6 +510,7 @@ def test_headingless_tex_reports_empty_index_not_body(tmp_path: Path) -> None:
 
 
 def test_headingless_markdown_reports_empty_index(tmp_path: Path) -> None:
+    """spec: no-structural-index#Markdown with no headings"""
     path = tmp_path / "notes.md"
     expected = empty_index_text(path, "just a paragraph\nwith two lines\n")
     assert rendered(["--list", str(path)]) == expected
@@ -460,6 +519,9 @@ def test_headingless_markdown_reports_empty_index(tmp_path: Path) -> None:
 
 
 def test_markdown_frontmatter_without_headings_keeps_yaml_index(tmp_path: Path) -> None:
+    """spec: no-structural-index#Frontmatter but no headings
+    spec: no-structural-index#Tree of a frontmatter-only file is empty
+    """
     path = tmp_path / "notes.md"
     path.write_text("---\ntitle: YAML Only\n---\nBody without headings.\n")
     indexed = rendered([str(path)])
@@ -471,6 +533,9 @@ def test_markdown_frontmatter_without_headings_keeps_yaml_index(tmp_path: Path) 
 
 
 def test_tex_abstract_list_and_extract(tmp_path: Path) -> None:
+    """spec: tex-addressing#Sections and the abstract are addresses
+    spec: tex-addressing#Abstract extract begins at its environment
+    """
     path = tmp_path / "paper.tex"
     path.write_text(
         "\\begin{abstract}\nabstract body\n\\end{abstract}\n"
@@ -489,6 +554,9 @@ def test_tex_abstract_list_and_extract(tmp_path: Path) -> None:
 
 
 def test_tex_abstract_via_input(tmp_path: Path) -> None:
+    """spec: tex-addressing#Abstract extract begins at its environment
+    spec: tex-addressing#Included section extracts with its body
+    """
     (tmp_path / "00abstract.tex").write_text("spliced abstract body\n")
     master = tmp_path / "main.tex"
     master.write_text("\\begin{abstract}\n\\input{00abstract}\n\\end{abstract}\n")
@@ -500,6 +568,7 @@ def test_tex_abstract_via_input(tmp_path: Path) -> None:
 
 
 def test_tex_no_heading_drops_begin_abstract_line(tmp_path: Path) -> None:
+    """spec: section-extraction#Heading line omitted"""
     path = tmp_path / "paper.tex"
     path.write_text("\\begin{abstract}\nabstract body\n\\end{abstract}\n")
     output = rendered(["--no-heading", str(path), "abstract"])
@@ -509,6 +578,7 @@ def test_tex_no_heading_drops_begin_abstract_line(tmp_path: Path) -> None:
 
 
 def test_pdf_list_headings(tmp_path: Path) -> None:
+    """spec: pdf-addressing#Outline is the tree"""
     path = tmp_path / "doc.pdf"
     write_outline_pdf(
         path,
@@ -520,6 +590,7 @@ def test_pdf_list_headings(tmp_path: Path) -> None:
 
 
 def test_pdf_no_heading_lists_outline(tmp_path: Path) -> None:
+    """spec: file-map#Map of a TeX or PDF file"""
     path = tmp_path / "doc.pdf"
     write_outline_pdf(
         path,
@@ -532,6 +603,9 @@ def test_pdf_no_heading_lists_outline(tmp_path: Path) -> None:
 
 
 def test_pdf_list_does_not_extract_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: file-map#Map of a TeX or PDF file
+    spec: pdf-addressing#Outline is the tree
+    """
     path = tmp_path / "doc.pdf"
     write_outline_pdf(
         path,
@@ -553,6 +627,7 @@ def test_pdf_list_does_not_extract_text(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test_pdf_without_outline_reports_empty_index(tmp_path: Path) -> None:
+    """spec: pdf-addressing#PDF without an outline"""
     path = tmp_path / "plain.pdf"
     write_outline_pdf(path, page_count=3)
     expected = f"no structural index\npages: 3\nbytes: {path.stat().st_size}"
@@ -561,6 +636,7 @@ def test_pdf_without_outline_reports_empty_index(tmp_path: Path) -> None:
 
 
 def test_pdf_frontmatter_only_empty(tmp_path: Path) -> None:
+    """spec: frontmatter-only#Frontmatter of a PDF"""
     path = tmp_path / "doc.pdf"
     write_outline_pdf(path, page_count=1, outline=(("Parent", 0, ()),))
     output = rendered(["-f", str(path)])
@@ -568,6 +644,7 @@ def test_pdf_frontmatter_only_empty(tmp_path: Path) -> None:
 
 
 def test_pdf_garbage_is_cli_failure(tmp_path: Path) -> None:
+    """spec: errors-and-exit-codes#Unreadable PDF"""
     path = tmp_path / "garbage.pdf"
     path.write_bytes(b"not a pdf")
     result = run_argv(["--list", str(path)])
@@ -592,6 +669,9 @@ def _nested_pdf(tmp_path: Path) -> Path:
 
 
 def test_pdf_nested_path(tmp_path: Path) -> None:
+    """spec: section-extraction#Nested path selects the child inside the named parent
+    spec: link-targets#Nested path inside a link
+    """
     path = _nested_pdf(tmp_path)
     output = rendered([f"[[{path}#Parent#Child]]"])
     assert "first-child" in output
@@ -600,6 +680,7 @@ def test_pdf_nested_path(tmp_path: Path) -> None:
 
 
 def test_pdf_same_page_dest_extracts_page(tmp_path: Path) -> None:
+    """spec: pdf-addressing#Extract is page-granular"""
     path = tmp_path / "same.pdf"
     write_outline_pdf(
         path,
@@ -635,6 +716,7 @@ def _same_page_appendix_pdf(tmp_path: Path) -> Path:
 
 
 def test_pdf_nested_same_page_heading_paths_extract_dest_page(tmp_path: Path) -> None:
+    """spec: pdf-addressing#Extract is page-granular"""
     path = _same_page_appendix_pdf(tmp_path)
     cases = (
         ("Additional Experimental Details#Retrieval Details", "appendix-page", "societal-page"),
@@ -650,6 +732,7 @@ def test_pdf_nested_same_page_heading_paths_extract_dest_page(tmp_path: Path) ->
 
 
 def test_pdf_missing_outline_title(tmp_path: Path) -> None:
+    """spec: errors-and-exit-codes#Heading not found"""
     path = _nested_pdf(tmp_path)
     result = run_argv([str(path), "NoSuch"])
     assert isinstance(result, CliFailure)
@@ -658,6 +741,7 @@ def test_pdf_missing_outline_title(tmp_path: Path) -> None:
 
 
 def test_pdf_no_heading_does_not_change_body(tmp_path: Path) -> None:
+    """spec: pdf-addressing#Markdown-only flags are no-ops on PDF"""
     path = _nested_pdf(tmp_path)
     default = rendered([str(path), "Parent"])
     no_heading = rendered(["--no-heading", str(path), "Parent"])
@@ -666,11 +750,15 @@ def test_pdf_no_heading_does_not_change_body(tmp_path: Path) -> None:
 
 
 def test_pdf_full_equals_default_extract(tmp_path: Path) -> None:
+    """spec: pdf-addressing#Markdown-only flags are no-ops on PDF"""
     path = _nested_pdf(tmp_path)
     assert rendered(["--full", str(path), "Parent"]) == rendered([str(path), "Parent"])
 
 
 def test_pdf_level_7_matches_native_outline(tmp_path: Path) -> None:
+    """spec: pdf-addressing#Rank is the outline's native rank
+    spec: pdf-addressing#Wrong rank on a PDF bookmark is not found
+    """
     path = tmp_path / "deep.pdf"
     deep = ("Deep", 0, ())
     level6 = ("L6", 0, (deep,))

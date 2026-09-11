@@ -73,6 +73,7 @@ def test_paragraph_stays_below_section_after_relative_shift() -> None:
 
 
 def test_parse_starred_section_and_subsection() -> None:
+    """spec: tex-addressing#Title forms that become addresses"""
     lines = tex_lines(r"""
         \section*{Starred}
         starred body
@@ -90,6 +91,7 @@ def test_parse_starred_section_and_subsection() -> None:
 
 
 def test_parse_optional_short_title_uses_long() -> None:
+    """spec: tex-addressing#Title forms that become addresses"""
     lines = [r"\section[short]{long}"]
     headings = parse_tex_headings(lines)
     assert [str(record.text) for record in headings] == ["long"]
@@ -114,6 +116,7 @@ def test_parse_math_source_title_exact() -> None:
 
 
 def test_commented_section_is_not_a_heading() -> None:
+    """spec: tex-addressing#Title forms that become addresses"""
     lines = tex_lines(r"""
         % \section{Commented}
         \section{Real}
@@ -139,6 +142,7 @@ def test_empty_section_is_not_a_heading() -> None:
 
 
 def test_extract_case_insensitive() -> None:
+    """spec: section-extraction#Matching ignores case"""
     lines = tex_lines(r"""
         \section{What this corpus is}
 
@@ -151,6 +155,7 @@ def test_extract_case_insensitive() -> None:
 
 
 def test_extract_first_hit_duplicate_sections() -> None:
+    """spec: section-extraction#Bare name matches the first occurrence"""
     lines = tex_lines(r"""
         \section{Dup}
 
@@ -169,6 +174,7 @@ def test_extract_first_hit_duplicate_sections() -> None:
 
 
 def test_extract_nested_parent_child() -> None:
+    """spec: tex-addressing#Extract stops at the next command of the same or higher rank"""
     lines = tex_lines(r"""
         \section{Parent}
 
@@ -194,6 +200,7 @@ def test_extract_nested_parent_child() -> None:
 
 
 def test_extract_level_filter_hits_section_not_subsection() -> None:
+    """spec: section-extraction#Exact rank on extract"""
     lines = tex_lines(r"""
         \section{Named}
 
@@ -256,6 +263,7 @@ def test_parse_subsubsection_level_five_not_subsection() -> None:
 
 
 def test_sectioning_is_not_a_heading() -> None:
+    """spec: tex-addressing#Title forms that become addresses"""
     lines = [r"\sectioning{Not a heading}", r"\section{Real}"]
     assert [str(record.text) for record in parse_tex_headings(lines)] == ["Real"]
 
@@ -279,7 +287,10 @@ def test_part_and_section_keep_rank_gap() -> None:
 
 
 def test_parse_bom_prefixed_section_is_a_heading() -> None:
-    """Holdings p-000814 2_Related_Work.tex starts with UTF-8 BOM before \\section."""
+    """Holdings p-000814 2_Related_Work.tex starts with UTF-8 BOM before \\section.
+    spec: what-counts-as-a-heading#A byte-order mark does not hide the first heading
+    spec: what-counts-as-a-heading#Extract of a BOM-prefixed section drops the BOM
+    """
     lines = ["\ufeff\\section{Related Work}", "body"]
     headings = parse_tex_headings(lines)
     assert [str(record.text) for record in headings] == ["Related Work"]
@@ -289,7 +300,9 @@ def test_parse_bom_prefixed_section_is_a_heading() -> None:
 
 
 def test_parse_multiline_section_title() -> None:
-    """Holdings p-001645 JL.tex wraps \\section{...} across lines."""
+    """Holdings p-001645 JL.tex wraps \\section{...} across lines.
+    spec: tex-addressing#Title forms that become addresses
+    """
     lines = [
         r"\section{Low Dimensions Suffice: Proof of ",
         r"\texorpdfstring{Theorem~\ref{thm:main}}{Main Theorem}}",
@@ -348,6 +361,7 @@ def test_unclosed_title_at_eof_is_not_a_heading() -> None:
 
 
 def test_relative_heading_levels_shifts_min_to_one() -> None:
+    """spec: heading-tree#Rank 1 on TeX is the shallowest command in the file"""
     records = (
         HeadingRecord(
             level=HeadingLevel(3),
@@ -389,6 +403,7 @@ def test_relative_heading_levels_empty() -> None:
 
 
 def test_article_heading_list_level_is_max_depth() -> None:
+    """spec: heading-tree#Listing limited to the top N ranks"""
     lines = tex_lines(r"""
         \section{Introduction}
         \subsection{Child}
@@ -476,6 +491,7 @@ def test_tex_include_path_brace_adds_tex_suffix() -> None:
 
 
 def test_tex_include_path_skips_non_includes() -> None:
+    """spec: tex-addressing#What does not expand"""
     assert tex_include_path(r"% \input{foo}") is None
     assert tex_include_path(r"  % \input{foo}") is None
     assert tex_include_path(r"\includegraphics{foo}") is None
@@ -495,6 +511,9 @@ def test_tex_include_path_skips_non_includes() -> None:
 
 
 def test_parse_abstract_environment_is_section_rank_heading() -> None:
+    """spec: tex-addressing#Sections and the abstract are addresses
+    spec: tex-addressing#Abstract extract begins at its environment
+    """
     lines = tex_lines(r"""
         \begin{abstract}
         abstract body
@@ -531,5 +550,6 @@ def test_commented_abstract_is_not_a_heading() -> None:
 
 
 def test_begin_figure_is_not_a_heading() -> None:
+    """spec: tex-addressing#Title forms that become addresses"""
     lines = [r"\begin{figure}", r"\section{Real}"]
     assert [str(record.text) for record in parse_tex_headings(lines)] == ["Real"]

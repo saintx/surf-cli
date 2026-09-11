@@ -27,7 +27,7 @@ src/surf/
   orchestrator.py  CLI: argument parsing, dispatch, exit codes
   test_*.py        tests, beside the modules they cover
 plugins/surf/      the agent skill and its manifests
-scripts/           test.sh, lint.sh, deploy.sh
+scripts/           test.sh, lint.sh, deploy.sh, spec-coverage.py
 ```
 
 The layers only depend downward, and `pypdf` is confined to `adapters.py`. Four `import-linter` contracts in `pyproject.toml` enforce this, and `scripts/lint.sh` runs them.
@@ -35,10 +35,11 @@ The layers only depend downward, and `pypdf` is confined to `adapters.py`. Four 
 ## Tests
 
 ```bash
-scripts/test.sh    # uv run pytest src/surf -q
+scripts/test.sh                      # uv run pytest src/surf -q
+python scripts/spec-coverage.py      # which spec scenarios have a passing test
 ```
 
-Tests live in `src/surf/test_*.py` and are excluded from the wheel. The root `tests/` directory is unused.
+Unit tests live in `src/surf/test_*.py` and are excluded from the wheel. A test that demonstrates a scenario cites it with a docstring line `spec: <slug>#Scenario`. `python scripts/spec-coverage.py` reports which scenarios under `spec/features/` those citations cover.
 
 ## Lint
 
