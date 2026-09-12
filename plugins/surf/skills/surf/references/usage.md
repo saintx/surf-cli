@@ -5,7 +5,7 @@ metadata:
     github_username: saintx
     email: alex@saintx.us
     twitter: alexsaintx
-  surf-version: "0.7.1"
+  surf-version: "0.8.0"
 ---
 # Surf Usage
 
@@ -101,25 +101,32 @@ The `.md` extension is implicit. `surf ~/path/to/file` resolves to `~/path/to/fi
 Scan YAML across a directory without loading any body:
 
 ```bash
-ls ~/path/to/*.md | xargs -I {} surf -f {}
+surf -f ~/path/to/*.md
 ```
 
-Same pattern on nested trees:
+Two or more files print under `==> path <==` headers. Nested trees:
 
 ```bash
-ls ~/path/to/*/file.md | xargs -I {} surf -f {}
+surf -f ~/path/to/*/file.md
 ```
 
 ## Platform aggregation (batch section extraction)
 
-Print the path, then one heading, for each matching file:
+Extract one heading from each matching file. Two or more files print under `==> path <==` headers:
 
 ```bash
-find ~/path/to -path '*/subdir/file.md' | sort \
-  | xargs -I{} sh -c 'echo "### {}" && surf {} "Some Heading" && echo'
+surf -s "Some Heading" ~/path/to/*/file.md
 ```
 
-Change the `find` root, the path glob, and the heading text to match the files you have.
+Change the glob and the heading text to match the files you have.
+
+## Filter by frontmatter
+
+```bash
+surf --where metadata.skill-family=skill-authoring -s Overview ~/path/to/*/references/about.md
+```
+
+`--where KEY=VALUE` keeps files whose YAML frontmatter matches. Dotted keys walk nested maps. A list value matches on membership. Repeat `--where` to require every clause. With no other mode flag, print matching paths.
 
 ## Additional options
 
@@ -129,8 +136,11 @@ Change the `find` root, the path glob, and the heading text to match the files y
 | heading, no flag | Section content without frontmatter |
 | `--list` | Heading tree only |
 | `-f` / `--frontmatter-only` | YAML only |
+| `-s` / `--section` | Heading to extract from each file. Every positional is a file. |
+| `--where KEY=VALUE` | Keep files whose frontmatter matches. Repeatable and conjunctive. |
 | `--full` | With a named heading: YAML frontmatter, then that section. Without a heading: the file map. |
 | `--content-only` / `--body-only` | Same as a named heading with no flag. This is the default extract. |
 | `--level N` | List: ranks 1 through N. Extract: exact rank N. |
 | `--no-heading` | Omit the heading line from section output |
 | `-o <file>` | Write output to a file. |
+| `-v` / `--verbose` | Name each skipped file on stderr. |

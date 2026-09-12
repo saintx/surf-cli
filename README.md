@@ -36,7 +36,7 @@ metadata:
     github_username: saintx
     email: alex@saintx.us
     twitter: alexsaintx
-  surf-version: "0.7.1"
+  surf-version: "0.8.0"
 ---
 
 - Surf — About
@@ -202,7 +202,13 @@ Matching ignores case. `surf guide` resolves to `guide.md`; `.tex` and `.pdf` ne
 **Scan a directory.** Frontmatter across many files, no body loaded:
 
 ```bash
-ls docs/*.md | xargs -I {} surf -f {}
+surf -f docs/*.md
+```
+
+Keep files whose frontmatter matches a key:
+
+```bash
+surf --where title=Guide docs/*.md
 ```
 
 `surf --help` lists every flag.

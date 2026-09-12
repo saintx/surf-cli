@@ -1,11 +1,11 @@
 ---
 feature: Multiple files
-status: proposed
-target: "0.8.0"
+status: shipped
+verified-against: "0.8.0"
 ---
 # Multiple files
 
-Proposed for 0.8.0. With `-f`, `--list`, `-s HEADING`, or `--where` present, every positional is a file. `-s HEADING` is the section flag: extract HEADING from each file. With no mode flag, `surf TARGET [HEADING]` is unchanged. When two or more files produce output, each result is printed under a `==> path <==` header; when exactly one file produces output, it is printed as the single-file form prints it. `-v` names each skipped file on stderr.
+With `-f`, `--list`, `-s HEADING`, or `--where` present, every positional is a file. `-s HEADING` is the section flag: extract HEADING from each file. With no mode flag, `surf TARGET [HEADING]` is unchanged. When two or more files produce output, each result is printed under a `==> path <==` header; when exactly one file produces output, it is printed as the single-file form prints it. `-v` names each skipped file on stderr.
 
 ```gherkin
 Feature: Multiple files

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "surf-cli"
-version = "0.7.1"
+version = "0.8.0"
 description = "List headings, or extract one section by name, from Markdown, TeX, or PDF."
 readme = "README.md"
 license = { file = "LICENSE" }
