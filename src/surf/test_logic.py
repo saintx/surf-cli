@@ -20,6 +20,7 @@ from surf.logic import (
     format_heading_list,
     format_outline_list,
     format_skip_heading,
+    format_skip_parse,
     frontmatter_interior,
     lookup,
     match_outline_span,
@@ -28,6 +29,7 @@ from surf.logic import (
     parse_heading_path,
     parse_headings,
     parse_link,
+    parse_where_token,
     split_frontmatter,
 )
 from surf.models import (
@@ -659,6 +661,22 @@ def test_format_skip_heading() -> None:
     assert (
         format_skip_heading(FileRef("c.md"), HeadingText("Overview"))
         == 'c.md: heading "Overview" not found, skipped'
+    )
+
+
+def test_parse_where_token() -> None:
+    nested = parse_where_token("metadata.family=skill-authoring")
+    assert nested == WhereClause(key_path=("metadata", "family"), expected="skill-authoring")
+    assert parse_where_token("kind=note") == WhereClause(key_path=("kind",), expected="note")
+    assert parse_where_token("=x") is None
+    assert parse_where_token("nook") is None
+    assert parse_where_token("") is None
+
+
+def test_format_skip_parse() -> None:
+    assert (
+        format_skip_parse(FileRef("c.md"), FrontmatterReject.ANCHOR)
+        == "c.md: frontmatter not parsed (anchor), skipped"
     )
 
 

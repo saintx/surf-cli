@@ -168,6 +168,7 @@ class CliOptions:
     level_filter: int | None
     output_ref: FileRef | None
     verbose: bool
+    where_clauses: tuple[WhereClause, ...]
 
 
 @dataclass(frozen=True, slots=True)

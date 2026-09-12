@@ -29,11 +29,16 @@ from surf.logic import (
     format_heading_list,
     format_outline_list,
     format_skip_heading,
+    format_skip_parse,
+    frontmatter_interior,
     match_outline_span,
+    match_where,
+    parse_frontmatter_yaml,
     parse_heading_path,
     parse_headings,
     parse_link,
     parse_tex_headings,
+    parse_where_token,
     split_frontmatter,
     tex_include_path,
 )
@@ -46,6 +51,7 @@ from surf.models import (
     ErrorMessage,
     ExitCode,
     FileRef,
+    FrontmatterReject,
     HeadingLevel,
     HeadingPath,
     HeadingPathRemainder,
@@ -53,6 +59,7 @@ from surf.models import (
     LineCount,
     OutlineLevel,
     RenderedBody,
+    WhereClause,
 )
 
 type CliResult = CliSuccess | CliFailure
@@ -115,6 +122,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Name skipped files on stderr",
     )
     parser.add_argument(
+        "--where",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Keep files whose frontmatter matches KEY=VALUE (repeatable, conjunctive)",
+    )
+    parser.add_argument(
         "--output", "-o", type=str, default=None, help="Write output to file instead of stdout"
     )
     return parser
@@ -132,7 +145,8 @@ def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
     section: str | None = args.section
     list_headings = bool(args.list_headings)
     frontmatter_only = bool(args.frontmatter_only)
-    multi = frontmatter_only or list_headings or (section is not None)
+    where_raw: list[str] = list(args.where or [])
+    multi = frontmatter_only or list_headings or (section is not None) or bool(where_raw)
     if not targets:
         return CliFailure(
             message=ErrorMessage("no target specified. Use surf --help for usage."),
@@ -150,6 +164,15 @@ def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
             ),
             exit_code=ExitCode(2),
         )
+    where_clauses: list[WhereClause] = []
+    for raw in where_raw:
+        clause = parse_where_token(raw)
+        if clause is None:
+            return CliFailure(
+                message=ErrorMessage("--where requires KEY=VALUE."),
+                exit_code=ExitCode(2),
+            )
+        where_clauses.append(clause)
     heading_path: HeadingPath | None = None
     file_refs: list[FileRef] = []
     if multi:
@@ -181,6 +204,7 @@ def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
         level_filter=args.level,
         output_ref=output_ref,
         verbose=bool(args.verbose),
+        where_clauses=tuple(where_clauses),
     )
 
 
@@ -280,6 +304,26 @@ def _skip_heading_notice(file_ref: FileRef, heading_path: HeadingPath | None) ->
     return format_skip_heading(file_ref, HeadingText(remainder))
 
 
+def _apply_where(path: Path, options: CliOptions) -> bool | FrontmatterReject:
+    if path.suffix.lower() == ".pdf":
+        return False
+    lines = read_document(path)
+    if path.suffix.lower() == ".tex":
+        lines = _expand_tex_inputs(
+            lines,
+            root_dir=path.parent,
+            current=path,
+            seen=frozenset(),
+        )
+    interior = frontmatter_interior(split_frontmatter(lines))
+    if interior is None:
+        return False
+    parsed = parse_frontmatter_yaml(interior)
+    if parsed.root is None:
+        return parsed.reject if parsed.reject is not None else False
+    return all(match_where(parsed.root, clause) for clause in options.where_clauses)
+
+
 def run(options: CliOptions) -> CliResult:
     if not options.file_refs:
         return CliFailure(
@@ -289,6 +333,9 @@ def run(options: CliOptions) -> CliResult:
     successes: list[tuple[FileRef, RenderedBody]] = []
     notices: list[ErrorMessage] = []
     multi = len(options.file_refs) > 1
+    filter_only = bool(options.where_clauses) and not (
+        options.frontmatter_only or options.list_headings or options.heading_path is not None
+    )
     for file_ref in options.file_refs:
         try:
             path = resolve_file(file_ref)
@@ -300,6 +347,15 @@ def run(options: CliOptions) -> CliResult:
                 exit_code=ExitCode(2),
             )
         try:
+            if options.where_clauses:
+                decision = _apply_where(path, options)
+                if decision is not True:
+                    if isinstance(decision, FrontmatterReject) and options.verbose:
+                        notices.append(format_skip_parse(file_ref, decision))
+                    continue
+            if filter_only:
+                successes.append((file_ref, RenderedBody(str(file_ref))))
+                continue
             result = _run_one(path, options)
         except UnicodeDecodeError:
             return CliFailure(
@@ -321,7 +377,12 @@ def run(options: CliOptions) -> CliResult:
             exit_code=ExitCode(1),
             notices=tuple(notices),
         )
-    return CliSuccess(body=format_attributed(successes), notices=tuple(notices))
+    body = (
+        RenderedBody("\n".join(part for _, part in successes))
+        if filter_only
+        else format_attributed(successes)
+    )
+    return CliSuccess(body=body, notices=tuple(notices))
 
 
 def _expand_tex_inputs(

@@ -16,6 +16,7 @@ from surf.models import (
     FileRef,
     HeadingPath,
     HeadingText,
+    WhereClause,
 )
 from surf.orchestrator import build_parser, main, options_from_namespace, run_argv
 from surf.test_adapters import write_outline_pdf
@@ -198,6 +199,7 @@ def test_parser_positional() -> None:
     assert converted.file_refs == (FileRef("file.md"),)
     assert converted.heading_path == HeadingPath(segments=(HeadingText("My Heading"),))
     assert converted.verbose is False
+    assert converted.where_clauses == ()
 
 
 def test_tex_list_headings(tex_file: Path) -> None:
@@ -959,3 +961,275 @@ def test_utf8_ingest_abort_discards_prior_success(
     assert captured.out == ""
     assert "==>" not in captured.out
     assert captured.err == "Error: could not decode undecodable.bin as UTF-8.\n"
+
+
+def test_paths_that_match(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: filter-by-frontmatter#Paths that match"""
+    monkeypatch.chdir(tmp_path)
+    matching = "---\nmetadata:\n  family: skill-authoring\n---\n"
+    (tmp_path / "one.md").write_text(matching)
+    (tmp_path / "two.md").write_text(matching)
+    (tmp_path / "three.md").write_text(matching)
+    (tmp_path / "other.md").write_text("---\nmetadata:\n  family: navigation\n---\n")
+    output = rendered(
+        [
+            "--where",
+            "metadata.family=skill-authoring",
+            "one.md",
+            "two.md",
+            "three.md",
+            "other.md",
+        ]
+    )
+    assert output == "one.md\ntwo.md\nthree.md"
+
+
+def test_filter_then_extract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: filter-by-frontmatter#Filter then extract"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "one.md").write_text(
+        "---\nmetadata:\n  family: skill-authoring\n---\n## Overview\nOne.\n"
+    )
+    (tmp_path / "two.md").write_text(
+        "---\nmetadata:\n  family: skill-authoring\n---\n## Overview\nTwo.\n"
+    )
+    (tmp_path / "other.md").write_text(
+        "---\nmetadata:\n  family: navigation\n---\n## Overview\nOther.\n"
+    )
+    output = rendered(
+        [
+            "--where",
+            "metadata.family=skill-authoring",
+            "-s",
+            "Overview",
+            "one.md",
+            "two.md",
+            "other.md",
+        ]
+    )
+    assert output == ("==> one.md <==\n## Overview\nOne.\n\n==> two.md <==\n## Overview\nTwo.")
+
+
+def test_dotted_keys_walk_nested_maps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: filter-by-frontmatter#Dotted keys walk nested maps"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("---\nmetadata:\n  author:\n    github_username: saintx\n---\n")
+    assert rendered(["--where", "metadata.author.github_username=saintx", "a.md"]) == "a.md"
+
+
+def test_list_values_match_on_membership(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: filter-by-frontmatter#List values match on membership"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("---\nmetadata:\n  family: [skill-authoring, navigation]\n---\n")
+    assert rendered(["--where", "metadata.family=navigation", "a.md"]) == "a.md"
+
+
+def test_value_absent_from_a_list_is_a_non_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """spec: filter-by-frontmatter#Value absent from a list is a non-match"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("---\nmetadata:\n  family: [skill-authoring, navigation]\n---\n")
+    monkeypatch.setattr("sys.argv", ["surf", "--where", "metadata.family=nope", "a.md"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_repeated_where_filters_are_conjunctive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """spec: filter-by-frontmatter#Repeated --where filters are conjunctive"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text(
+        "---\nmetadata:\n  family: [navigation]\n  mixins: [overview]\n---\n"
+    )
+    assert (
+        rendered(
+            [
+                "--where",
+                "metadata.family=navigation",
+                "--where",
+                "metadata.mixins=overview",
+                "a.md",
+            ]
+        )
+        == "a.md"
+    )
+
+
+def test_one_failing_where_rejects_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """spec: filter-by-frontmatter#One failing --where rejects the file"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text(
+        "---\nmetadata:\n  family: [navigation]\n  mixins: [overview]\n---\n"
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "surf",
+            "--where",
+            "metadata.family=navigation",
+            "--where",
+            "metadata.mixins=nope",
+            "a.md",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("disable-model-invocation", "true"),
+        ("enabled", "false"),
+        ("owner", "null"),
+    ],
+)
+def test_booleans_and_null_compare_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, key: str, value: str
+) -> None:
+    """spec: filter-by-frontmatter#Booleans and null compare by name"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text(f"---\n{key}: {value}\n---\n")
+    assert rendered(["--where", f"{key}={value}", "a.md"]) == "a.md"
+
+
+def test_unparsable_frontmatter_is_a_non_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """spec: filter-by-frontmatter#Unparsable frontmatter is a non-match"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("---\nname: &n x\nalias: *n\n---\n")
+    monkeypatch.setattr("sys.argv", ["surf", "--where", "name=x", "a.md", "-v"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "a.md: frontmatter not parsed (anchor), skipped\n"
+
+
+def test_filter_that_narrows_to_one_file_prints_no_header(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """spec: multiple-files#Filter that narrows to one file prints no header"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("---\nkind: note\n---\n## Overview\nA text.\n")
+    (tmp_path / "b.md").write_text("---\nkind: draft\n---\n## Overview\nB text.\n")
+    assert rendered(["--where", "kind=note", "-s", "Overview", "a.md", "b.md"]) == rendered(
+        ["a.md", "Overview"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("snippet", "reason"),
+    [
+        ("name: &n x\nalias: *n", "anchor"),
+        ("name: |\n  text", "block scalar"),
+        ("name: >\n  text", "block scalar"),
+        ("name: {b: 1}", "flow map"),
+    ],
+    ids=["anchor or alias", "block scalar |", "block scalar >", "flow map"],
+)
+def test_rejected_yaml_constructs_make_the_file_a_non_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    snippet: str,
+    reason: str,
+) -> None:
+    """spec: frontmatter-grammar#Rejected YAML constructs make the file a non-match"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text(f"---\n{snippet}\n---\n")
+    monkeypatch.setattr("sys.argv", ["surf", "--where", "name=x", "a.md", "-v"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"a.md: frontmatter not parsed ({reason}), skipped\n"
+
+
+def test_skill_family_list_membership(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: filter-by-frontmatter#List values match on membership"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "fixture.md").write_text("---\nmetadata:\n  skill-family: [tooling]\n---\n")
+    assert rendered(["--where", "metadata.skill-family=tooling", "fixture.md"]) == "fixture.md"
+
+
+def test_malformed_where_token_is_usage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("# A\n")
+    monkeypatch.setattr("sys.argv", ["surf", "--where", "nope", "a.md"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err == "Error: --where requires KEY=VALUE.\n"
+
+
+def test_where_then_frontmatter_is_byte_for_byte(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("---\nkind: note\n---\nbody\n")
+    output = rendered(["-f", "--where", "kind=note", "a.md"])
+    assert output == "---\nkind: note\n---"
+    assert output.startswith("---")
+    assert "YamlMap" not in output
+
+
+def test_where_on_pdf_is_silent_non_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    write_outline_pdf(tmp_path / "doc.pdf", page_count=1)
+    monkeypatch.setattr("sys.argv", ["surf", "--where", "kind=note", "doc.pdf", "-v"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_where_on_tex_without_fence_is_silent_non_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "doc.tex").write_text("\\section{Hi}\n")
+    monkeypatch.setattr("sys.argv", ["surf", "--where", "kind=note", "doc.tex", "-v"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_parser_where_clauses() -> None:
+    converted = options_from_namespace(
+        build_parser().parse_args(
+            ["--where", "metadata.family=skill-authoring", "--where", "kind=note", "a.md"]
+        )
+    )
+    assert isinstance(converted, CliOptions)
+    assert converted.file_refs == (FileRef("a.md"),)
+    assert converted.heading_path is None
+    assert converted.where_clauses == (
+        WhereClause(key_path=("metadata", "family"), expected="skill-authoring"),
+        WhereClause(key_path=("kind",), expected="note"),
+    )
