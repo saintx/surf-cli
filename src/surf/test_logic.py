@@ -4,6 +4,10 @@
 from __future__ import annotations
 
 import textwrap
+from pathlib import Path
+
+import pytest
+import yaml
 
 from surf.logic import (
     exclusive_page_end,
@@ -16,7 +20,11 @@ from surf.logic import (
     format_heading_list,
     format_outline_list,
     format_skip_heading,
+    frontmatter_interior,
+    lookup,
     match_outline_span,
+    match_where,
+    parse_frontmatter_yaml,
     parse_heading_path,
     parse_headings,
     parse_link,
@@ -26,6 +34,7 @@ from surf.models import (
     ByteCount,
     CliTarget,
     FileRef,
+    FrontmatterReject,
     HeadingLevel,
     HeadingPath,
     HeadingPathRemainder,
@@ -39,6 +48,10 @@ from surf.models import (
     ParsedLink,
     PdfDocument,
     RenderedBody,
+    WhereClause,
+    YamlMap,
+    YamlNode,
+    YamlSeq,
 )
 
 SAMPLE_MD = textwrap.dedent("""\
@@ -647,3 +660,111 @@ def test_format_skip_heading() -> None:
         format_skip_heading(FileRef("c.md"), HeadingText("Overview"))
         == 'c.md: heading "Overview" not found, skipped'
     )
+
+
+def _yaml_node_from_safe_load(value: object) -> YamlNode:
+    match value:
+        case dict():
+            return YamlMap(
+                entries=tuple(
+                    (str(key), _yaml_node_from_safe_load(item)) for key, item in value.items()
+                )
+            )
+        case list():
+            return YamlSeq(items=tuple(_yaml_node_from_safe_load(item) for item in value))
+        case bool() | str() | int() | None:
+            return value
+        case _:
+            raise AssertionError(f"unsupported PyYAML node: {value!r}")
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        "a:\n  b: 1",
+        "a:\n  - x\n  - y",
+        "a: [x, y]",
+        'a: "x y"',
+        "a: x",
+        "a: one\n  two",
+        "a: true\nb: false\nc: null",
+        "a: 42",
+        "a: x # note",
+    ],
+    ids=[
+        "nested maps by indentation",
+        "block lists with '- '",
+        "flow lists like [a, b]",
+        "quoted scalars",
+        "bare scalars",
+        "plain scalar folded across indented lines",
+        "true, false, and null",
+        "integers",
+        "# comments",
+    ],
+)
+def test_supported_yaml_constructs_parse_as_pyyaml(snippet: str) -> None:
+    """spec: frontmatter-grammar#Supported YAML constructs parse as PyYAML does"""
+    parsed = parse_frontmatter_yaml(snippet.splitlines())
+    loaded = yaml.safe_load(snippet)
+    assert parsed.reject is None
+    assert parsed.root == _yaml_node_from_safe_load(loaded)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "reason"),
+    [
+        ("name: &n x\nalias: *n", FrontmatterReject.ANCHOR),
+        ("name: |\n  text", FrontmatterReject.BLOCK_SCALAR),
+        ("name: >\n  text", FrontmatterReject.BLOCK_SCALAR),
+        ("name: {b: 1}", FrontmatterReject.FLOW_MAP),
+    ],
+    ids=["anchor or alias", "block scalar |", "block scalar >", "flow map"],
+)
+def test_rejected_yaml_constructs(snippet: str, reason: FrontmatterReject) -> None:
+    parsed = parse_frontmatter_yaml(snippet.splitlines())
+    assert parsed.root is None
+    assert parsed.reject is reason
+
+
+def test_lookup_dotted_nested_map() -> None:
+    parsed = parse_frontmatter_yaml(
+        "metadata:\n  author:\n    github_username: saintx".splitlines()
+    )
+    assert parsed.root is not None
+    assert lookup(parsed.root, ("metadata", "author", "github_username")) == "saintx"
+
+
+def test_match_where_list_membership() -> None:
+    parsed = parse_frontmatter_yaml("family: [skill-authoring, navigation]".splitlines())
+    assert parsed.root is not None
+    assert match_where(parsed.root, WhereClause(key_path=("family",), expected="navigation"))
+    assert not match_where(parsed.root, WhereClause(key_path=("family",), expected="nope"))
+
+
+def test_match_where_bool_and_null() -> None:
+    parsed = parse_frontmatter_yaml("a: true\nb: false\nc: null".splitlines())
+    assert parsed.root is not None
+    assert match_where(parsed.root, WhereClause(key_path=("a",), expected="true"))
+    assert match_where(parsed.root, WhereClause(key_path=("b",), expected="false"))
+    assert match_where(parsed.root, WhereClause(key_path=("c",), expected="null"))
+    assert not match_where(parsed.root, WhereClause(key_path=("a",), expected="false"))
+
+
+def test_plugin_skill_frontmatter_parses() -> None:
+    skill_dir = Path(__file__).resolve().parents[2] / "plugins/surf/skills/surf"
+    skill_root = None
+    for relative in ("SKILL.md", "references/about.md", "references/usage.md"):
+        split = split_frontmatter((skill_dir / relative).read_text(encoding="utf-8").splitlines())
+        interior = frontmatter_interior(split)
+        assert interior is not None
+        parsed = parse_frontmatter_yaml(interior)
+        assert parsed.reject is None
+        assert parsed.root is not None
+        assert lookup(parsed.root, ("metadata", "author", "github_username")) == "saintx"
+        if relative == "SKILL.md":
+            skill_root = parsed.root
+    assert skill_root is not None
+    description = lookup(skill_root, ("description",))
+    assert isinstance(description, str)
+    assert "Progressive context disclosure" in description

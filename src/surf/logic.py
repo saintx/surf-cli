@@ -13,10 +13,13 @@ from surf.models import (
     CliTarget,
     ClosedSpan,
     Delimiter,
+    DocumentLines,
     ErrorMessage,
     ExtractedOutline,
     ExtractedSection,
     FileRef,
+    FrontmatterParse,
+    FrontmatterReject,
     FrontmatterSplit,
     HeadingLevel,
     HeadingLineCount,
@@ -39,6 +42,10 @@ from surf.models import (
     TexEnvironment,
     TexIncludeCommand,
     TexIncludeRelPath,
+    WhereClause,
+    YamlMap,
+    YamlNode,
+    YamlSeq,
 )
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
@@ -602,3 +609,396 @@ def format_attributed(parts: Sequence[tuple[FileRef, RenderedBody]]) -> Rendered
 
 def format_skip_heading(path: FileRef, heading: HeadingText) -> ErrorMessage:
     return ErrorMessage(f'{path}: heading "{heading}" not found, skipped')
+
+
+_INTEGER_RE = re.compile(r"-?(0|[1-9][0-9]*)\Z")
+_VALUE_START = frozenset(" \t#[]{}'\"|>&*")
+
+
+class _Reject(Exception):
+    def __init__(self, reason: FrontmatterReject) -> None:
+        self.reason = reason
+
+
+def frontmatter_interior(split: FrontmatterSplit) -> DocumentLines | None:
+    block = split.frontmatter
+    if block is None or len(block) < 2:
+        return None
+    if block[0].rstrip() != "---" or block[-1].rstrip() != "---":
+        return None
+    return block[1:-1]
+
+
+def parse_frontmatter_yaml(lines: Sequence[str]) -> FrontmatterParse:
+    try:
+        root = _FrontmatterParser(lines).parse_root()
+    except _Reject as exc:
+        return FrontmatterParse(root=None, reject=exc.reason)
+    return FrontmatterParse(root=root, reject=None)
+
+
+def lookup(root: YamlMap, key_path: tuple[str, ...]) -> YamlNode | None:
+    current: YamlNode = root
+    for key in key_path:
+        match current:
+            case YamlMap(entries=entries):
+                matched: YamlNode | None = None
+                for entry_key, entry_value in entries:
+                    if entry_key == key:
+                        matched = entry_value
+                        break
+                if matched is None:
+                    return None
+                current = matched
+            case _:
+                return None
+    return current
+
+
+def match_where(root: YamlMap, clause: WhereClause) -> bool:
+    if not clause.key_path:
+        return False
+    parent_path = clause.key_path[:-1]
+    last = clause.key_path[-1]
+    owner: YamlNode = root if not parent_path else lookup(root, parent_path)
+    match owner:
+        case YamlMap(entries=entries):
+            present = False
+            value: YamlNode | None = None
+            for key, item in entries:
+                if key == last:
+                    present = True
+                    value = item
+                    break
+            if not present:
+                return False
+        case _:
+            return False
+    match value:
+        case YamlSeq(items=items):
+            return any(_name_equal(item, clause.expected) for item in items)
+        case YamlMap():
+            return False
+        case _:
+            return _name_equal(value, clause.expected)
+
+
+def _name_equal(value: YamlNode, expected: str) -> bool:
+    match value:
+        case bool():
+            return expected == ("true" if value else "false")
+        case None:
+            return expected == "null"
+        case int():
+            return expected == str(value)
+        case str():
+            return value == expected
+        case _:
+            return False
+
+
+def _split_indent(raw: str) -> tuple[int, str]:
+    indent = 0
+    for char in raw:
+        if char == " ":
+            indent += 1
+            continue
+        if char == "\t":
+            raise _Reject(FrontmatterReject.SYNTAX)
+        break
+    return indent, raw[indent:]
+
+
+def _split_mapping_line(content: str) -> tuple[str, str] | None:
+    for i, char in enumerate(content):
+        if char != ":":
+            continue
+        after = content[i + 1 :]
+        if after == "" or after[0] in _VALUE_START:
+            return content[:i].strip(), after
+    return None
+
+
+def _plain_until_comment(text: str) -> str:
+    if text.startswith("#"):
+        return ""
+    index = text.find(" #")
+    if index == -1:
+        return text
+    return text[:index]
+
+
+def _expect_only_comment(rest: str) -> None:
+    stripped = rest.strip()
+    if stripped == "" or stripped.startswith("#"):
+        return
+    raise _Reject(FrontmatterReject.SYNTAX)
+
+
+def _reject_special_tokens(text: str) -> None:
+    if "{" in text:
+        raise _Reject(FrontmatterReject.FLOW_MAP)
+    for token in text.split():
+        if token.startswith("&") or token.startswith("*"):
+            raise _Reject(FrontmatterReject.ANCHOR)
+
+
+def _parse_quoted(text: str) -> tuple[str, str]:
+    quote = text[0]
+    if quote not in "\"'":
+        raise _Reject(FrontmatterReject.SYNTAX)
+    i = 1
+    chars: list[str] = []
+    while i < len(text):
+        char = text[i]
+        if quote == "'" and char == "'":
+            if i + 1 < len(text) and text[i + 1] == "'":
+                chars.append("'")
+                i += 2
+                continue
+            return "".join(chars), text[i + 1 :]
+        if quote == '"' and char == '"':
+            return "".join(chars), text[i + 1 :]
+        if quote == '"' and char == "\\":
+            if i + 1 >= len(text):
+                raise _Reject(FrontmatterReject.SYNTAX)
+            nxt = text[i + 1]
+            if nxt in '"\\':
+                chars.append(nxt)
+                i += 2
+                continue
+            raise _Reject(FrontmatterReject.SYNTAX)
+        chars.append(char)
+        i += 1
+    raise _Reject(FrontmatterReject.SYNTAX)
+
+
+def _parse_flow_seq(text: str) -> tuple[YamlSeq, str]:
+    if not text.startswith("["):
+        raise _Reject(FrontmatterReject.SYNTAX)
+    remaining = text[1:]
+    items: list[YamlNode] = []
+    expect_item = True
+    while remaining:
+        remaining = remaining.lstrip(" ")
+        if remaining.startswith("]"):
+            return YamlSeq(items=tuple(items)), remaining[1:]
+        if remaining.startswith(","):
+            if expect_item:
+                raise _Reject(FrontmatterReject.SYNTAX)
+            remaining = remaining[1:]
+            expect_item = True
+            continue
+        if not expect_item:
+            raise _Reject(FrontmatterReject.SYNTAX)
+        if remaining.startswith("{"):
+            raise _Reject(FrontmatterReject.FLOW_MAP)
+        if remaining.startswith("&") or remaining.startswith("*"):
+            raise _Reject(FrontmatterReject.ANCHOR)
+        if remaining.startswith("["):
+            item, remaining = _parse_flow_seq(remaining)
+            items.append(item)
+            expect_item = False
+            continue
+        if remaining.startswith('"') or remaining.startswith("'"):
+            quoted, remaining = _parse_quoted(remaining)
+            items.append(quoted)
+            expect_item = False
+            continue
+        end = 0
+        while end < len(remaining) and remaining[end] not in ",]":
+            end += 1
+        raw = remaining[:end].strip()
+        remaining = remaining[end:]
+        if not raw:
+            raise _Reject(FrontmatterReject.SYNTAX)
+        _reject_special_tokens(raw)
+        items.append(_parse_plain_scalar(raw))
+        expect_item = False
+    raise _Reject(FrontmatterReject.SYNTAX)
+
+
+def _parse_plain_scalar(body: str) -> str | int | bool | None:
+    if body == "true":
+        return True
+    if body == "false":
+        return False
+    if body == "null":
+        return None
+    if _INTEGER_RE.fullmatch(body):
+        return int(body)
+    if body.startswith("!") or body.startswith("%"):
+        raise _Reject(FrontmatterReject.SYNTAX)
+    return body
+
+
+def _parse_inline(text: str) -> tuple[YamlNode, str]:
+    text = text.lstrip(" ")
+    if not text or text.startswith("#"):
+        return None, "plain"
+    if text.startswith("{"):
+        raise _Reject(FrontmatterReject.FLOW_MAP)
+    if text.startswith("|") or text.startswith(">"):
+        raise _Reject(FrontmatterReject.BLOCK_SCALAR)
+    if text.startswith("&") or text.startswith("*"):
+        raise _Reject(FrontmatterReject.ANCHOR)
+    if text.startswith("!") or text.startswith("%"):
+        raise _Reject(FrontmatterReject.SYNTAX)
+    if text.startswith("["):
+        node, rest = _parse_flow_seq(text)
+        _expect_only_comment(rest)
+        return node, "flow"
+    if text.startswith('"') or text.startswith("'"):
+        node, rest = _parse_quoted(text)
+        _expect_only_comment(rest)
+        return node, "quoted"
+    body = _plain_until_comment(text).strip()
+    _reject_special_tokens(body)
+    return _parse_plain_scalar(body), "plain"
+
+
+def _put_entry(entries: list[tuple[str, YamlNode]], key: str, value: YamlNode) -> None:
+    for i, (existing, _) in enumerate(entries):
+        if existing == key:
+            entries[i] = (key, value)
+            return
+    entries.append((key, value))
+
+
+class _FrontmatterParser:
+    def __init__(self, lines: Sequence[str]) -> None:
+        self._lines = tuple(lines)
+        self._i = 0
+
+    def parse_root(self) -> YamlMap:
+        root = self._parse_map(min_indent=0)
+        if self._peek() is not None:
+            raise _Reject(FrontmatterReject.SYNTAX)
+        return root
+
+    def _peek(self) -> tuple[int, str] | None:
+        found = self._next_content()
+        if found is None:
+            return None
+        _, indent, content = found
+        return indent, content
+
+    def _advance(self) -> None:
+        found = self._next_content()
+        if found is None:
+            raise _Reject(FrontmatterReject.SYNTAX)
+        index, _, _ = found
+        self._i = index + 1
+
+    def _next_content(self) -> tuple[int, int, str] | None:
+        i = self._i
+        while i < len(self._lines):
+            indent, rest = _split_indent(self._lines[i])
+            if rest.strip() == "" or rest.lstrip().startswith("#"):
+                i += 1
+                continue
+            if rest.startswith("%"):
+                raise _Reject(FrontmatterReject.SYNTAX)
+            return i, indent, rest
+        return None
+
+    def _parse_map(self, *, min_indent: int) -> YamlMap:
+        entries: list[tuple[str, YamlNode]] = []
+        map_indent: int | None = None
+        while True:
+            peeked = self._peek()
+            if peeked is None:
+                break
+            indent, content = peeked
+            if indent < min_indent:
+                break
+            if map_indent is None:
+                map_indent = indent
+            if indent != map_indent:
+                if indent > map_indent:
+                    raise _Reject(FrontmatterReject.SYNTAX)
+                break
+            split = _split_mapping_line(content)
+            if split is None:
+                raise _Reject(FrontmatterReject.SYNTAX)
+            key, raw_value = split
+            if key == "":
+                raise _Reject(FrontmatterReject.SYNTAX)
+            _reject_special_tokens(key)
+            self._advance()
+            value = self._parse_map_value(raw_value, key_indent=indent)
+            _put_entry(entries, key, value)
+        return YamlMap(entries=tuple(entries))
+
+    def _parse_seq(self, *, seq_indent: int) -> YamlSeq:
+        items: list[YamlNode] = []
+        while True:
+            peeked = self._peek()
+            if peeked is None:
+                break
+            indent, content = peeked
+            if indent != seq_indent:
+                break
+            if not (content.startswith("- ") or content == "-"):
+                break
+            self._advance()
+            if content == "-":
+                items.append(self._parse_nested(parent_indent=seq_indent))
+            else:
+                items.append(self._parse_map_value(content[2:], key_indent=seq_indent))
+        return YamlSeq(items=tuple(items))
+
+    def _parse_map_value(self, raw_value: str, *, key_indent: int) -> YamlNode:
+        stripped = raw_value.strip()
+        if stripped == "" or stripped.startswith("#"):
+            return self._parse_nested(parent_indent=key_indent)
+        node, kind = _parse_inline(raw_value)
+        if kind == "plain" and isinstance(node, str):
+            folded = self._collect_folded(parent_indent=key_indent)
+            if folded:
+                return f"{node} {folded}" if node else folded
+        return node
+
+    def _parse_nested(self, *, parent_indent: int) -> YamlNode:
+        peeked = self._peek()
+        if peeked is None or peeked[0] <= parent_indent:
+            return None
+        indent, content = peeked
+        if content.startswith("- ") or content == "-":
+            return self._parse_seq(seq_indent=indent)
+        if _split_mapping_line(content) is not None:
+            return self._parse_map(min_indent=parent_indent + 1)
+        return self._parse_block_plain(parent_indent=parent_indent)
+
+    def _parse_block_plain(self, *, parent_indent: int) -> YamlNode:
+        peeked = self._peek()
+        if peeked is None:
+            raise _Reject(FrontmatterReject.SYNTAX)
+        _, content = peeked
+        self._advance()
+        node, kind = _parse_inline(content)
+        if kind == "plain" and isinstance(node, str):
+            folded = self._collect_folded(parent_indent=parent_indent)
+            if folded:
+                return f"{node} {folded}" if node else folded
+        return node
+
+    def _collect_folded(self, *, parent_indent: int) -> str:
+        parts: list[str] = []
+        while True:
+            peeked = self._peek()
+            if peeked is None:
+                break
+            indent, content = peeked
+            if indent <= parent_indent:
+                break
+            if content.startswith("- ") or content == "-":
+                break
+            if _split_mapping_line(content) is not None:
+                break
+            self._advance()
+            piece = _plain_until_comment(content).strip()
+            _reject_special_tokens(piece)
+            if piece:
+                parts.append(piece)
+        return " ".join(parts)

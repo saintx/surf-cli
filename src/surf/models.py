@@ -50,6 +50,13 @@ class TexEnvironment(StrEnum):
     ABSTRACT = "abstract"
 
 
+class FrontmatterReject(StrEnum):
+    ANCHOR = "anchor"
+    BLOCK_SCALAR = "block scalar"
+    FLOW_MAP = "flow map"
+    SYNTAX = "syntax"
+
+
 @dataclass(frozen=True, slots=True)
 class HeadingPath:
     segments: tuple[HeadingText, ...]
@@ -110,6 +117,31 @@ class ParsedLink:
 class FrontmatterSplit:
     frontmatter: DocumentLines | None
     body: DocumentLines
+
+
+type YamlNode = str | int | bool | None | YamlMap | YamlSeq
+
+
+@dataclass(frozen=True, slots=True)
+class YamlMap:
+    entries: tuple[tuple[str, YamlNode], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class YamlSeq:
+    items: tuple[YamlNode, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class FrontmatterParse:
+    root: YamlMap | None
+    reject: FrontmatterReject | None
+
+
+@dataclass(frozen=True, slots=True)
+class WhereClause:
+    key_path: tuple[str, ...]
+    expected: str
 
 
 @dataclass(frozen=True, slots=True)
