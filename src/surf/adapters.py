@@ -35,13 +35,15 @@ class PdfIngestError(Exception):
 
 def resolve_file(file_ref: FileRef) -> Path:
     path = Path(str(file_ref)).expanduser()
-    if path.exists():
-        return path
-    if not path.suffix:
+    if not path.exists() and not path.suffix:
         with_md = path.with_suffix(".md")
         if with_md.exists():
-            return with_md
-    raise FileNotFoundError(f"File not found: {file_ref}")
+            path = with_md
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {file_ref}")
+    if path.is_dir():
+        raise IsADirectoryError(f"{file_ref} is a directory")
+    return path
 
 
 def read_document(path: Path) -> DocumentLines:

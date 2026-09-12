@@ -22,11 +22,13 @@ from surf.adapters import (
 from surf.logic import (
     exclusive_page_end,
     extract_section,
+    format_attributed,
     format_empty_index,
     format_empty_pdf_index,
     format_file_index,
     format_heading_list,
     format_outline_list,
+    format_skip_heading,
     match_outline_span,
     parse_heading_path,
     parse_headings,
@@ -63,14 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
-        "target",
-        nargs="?",
-        help="Link or file path: [[path#Heading]], [Text](path#Heading), or file path",
-    )
-    parser.add_argument(
-        "heading",
-        nargs="?",
-        help="Heading or outline title (when target is a plain file path)",
+        "targets",
+        nargs="*",
+        help="Link or file path: [[path#Heading]], [Text](path#Heading), or file path; "
+        "heading as the second positional in single-target form",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--full", action="store_true", help="Output frontmatter + section content")
@@ -105,41 +103,89 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-heading", action="store_true", help="Exclude the heading line from output"
     )
     parser.add_argument(
+        "-s",
+        "--section",
+        default=None,
+        help="Heading or outline title to extract from each file",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Name skipped files on stderr",
+    )
+    parser.add_argument(
         "--output", "-o", type=str, default=None, help="Write output to file instead of stdout"
     )
     return parser
 
 
+def _heading_from_token(token: str) -> HeadingPath:
+    heading_path = parse_heading_path(HeadingPathRemainder(token))
+    if heading_path is None:
+        return HeadingPath(segments=(HeadingText(token),))
+    return heading_path
+
+
 def options_from_namespace(args: argparse.Namespace) -> CliOptions | CliFailure:
-    if args.target is None:
+    targets: list[str] = list(args.targets)
+    section: str | None = args.section
+    list_headings = bool(args.list_headings)
+    frontmatter_only = bool(args.frontmatter_only)
+    multi = frontmatter_only or list_headings or (section is not None)
+    if not targets:
         return CliFailure(
             message=ErrorMessage("no target specified. Use surf --help for usage."),
             exit_code=ExitCode(2),
         )
-    parsed = parse_link(CliTarget(args.target))
-    heading_path = parsed.heading_path
-    if heading_path is None and args.heading is not None:
-        heading_path = parse_heading_path(HeadingPathRemainder(args.heading))
-        if heading_path is None:
-            heading_path = HeadingPath(segments=(HeadingText(args.heading),))
+    if section is not None and (list_headings or frontmatter_only):
+        return CliFailure(
+            message=ErrorMessage("-s/--section cannot combine with --list or -f."),
+            exit_code=ExitCode(2),
+        )
+    if not multi and len(targets) >= 3:
+        return CliFailure(
+            message=ErrorMessage(
+                "extra arguments; use -f, --list, -s/--section, or --where to address many files."
+            ),
+            exit_code=ExitCode(2),
+        )
+    heading_path: HeadingPath | None = None
+    file_refs: list[FileRef] = []
+    if multi:
+        for target in targets:
+            parsed = parse_link(CliTarget(target))
+            if parsed.file_ref is None:
+                return CliFailure(
+                    message=ErrorMessage("could not parse file path from target."),
+                    exit_code=ExitCode(2),
+                )
+            file_refs.append(parsed.file_ref)
+        if section is not None:
+            heading_path = _heading_from_token(section)
+    else:
+        parsed = parse_link(CliTarget(targets[0]))
+        heading_path = parsed.heading_path
+        if parsed.file_ref is not None:
+            file_refs.append(parsed.file_ref)
+        if len(targets) == 2 and heading_path is None:
+            heading_path = _heading_from_token(targets[1])
     output_ref = FileRef(args.output) if args.output else None
     return CliOptions(
-        file_ref=parsed.file_ref,
+        file_refs=tuple(file_refs),
         heading_path=heading_path,
-        list_headings=bool(args.list_headings),
-        frontmatter_only=bool(args.frontmatter_only),
+        list_headings=list_headings,
+        frontmatter_only=frontmatter_only,
         full=bool(args.full),
         no_heading=bool(args.no_heading),
         level_filter=args.level,
         output_ref=output_ref,
+        verbose=bool(args.verbose),
     )
 
 
 def _run_pdf(path: Path, options: CliOptions) -> CliResult:
-    try:
-        catalog = read_pdf_catalog(path)
-    except PdfIngestError as exc:
-        return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(1))
+    catalog = read_pdf_catalog(path)
     outline_level = OutlineLevel(options.level_filter) if options.level_filter is not None else None
     if options.frontmatter_only:
         return CliSuccess(body=RenderedBody(""))
@@ -160,32 +206,14 @@ def _run_pdf(path: Path, options: CliOptions) -> CliResult:
         )
     if span.start_page is None:
         return CliSuccess(body=RenderedBody(""))
-    try:
-        pages = read_pdf_pages(path, span.start_page, exclusive_page_end(span))
-    except PdfIngestError as exc:
-        return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(1))
+    pages = read_pdf_pages(path, span.start_page, exclusive_page_end(span))
     return CliSuccess(body=RenderedBody("\n".join(pages).rstrip()))
 
 
-def run(options: CliOptions) -> CliResult:
-    if options.file_ref is None:
-        return CliFailure(
-            message=ErrorMessage("could not parse file path from target."),
-            exit_code=ExitCode(2),
-        )
-    try:
-        path = resolve_file(options.file_ref)
-    except FileNotFoundError as exc:
-        return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(2))
+def _run_one(path: Path, options: CliOptions) -> CliResult:
     if path.suffix.lower() == ".pdf":
         return _run_pdf(path, options)
-    try:
-        lines = read_document(path)
-    except UnicodeDecodeError:
-        return CliFailure(
-            message=ErrorMessage(f"could not decode {path} as UTF-8."),
-            exit_code=ExitCode(1),
-        )
+    lines = read_document(path)
     line_count = LineCount(len(lines))
     byte_count = document_byte_count(path)
     if path.suffix.lower() == ".tex":
@@ -245,6 +273,57 @@ def run(options: CliOptions) -> CliResult:
     return CliSuccess(body=RenderedBody("\n".join(parts).rstrip()))
 
 
+def _skip_heading_notice(file_ref: FileRef, heading_path: HeadingPath | None) -> ErrorMessage:
+    remainder = (
+        "#".join(str(seg) for seg in heading_path.segments) if heading_path is not None else ""
+    )
+    return format_skip_heading(file_ref, HeadingText(remainder))
+
+
+def run(options: CliOptions) -> CliResult:
+    if not options.file_refs:
+        return CliFailure(
+            message=ErrorMessage("could not parse file path from target."),
+            exit_code=ExitCode(2),
+        )
+    successes: list[tuple[FileRef, RenderedBody]] = []
+    notices: list[ErrorMessage] = []
+    multi = len(options.file_refs) > 1
+    for file_ref in options.file_refs:
+        try:
+            path = resolve_file(file_ref)
+        except FileNotFoundError as exc:
+            return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(2))
+        except IsADirectoryError:
+            return CliFailure(
+                message=ErrorMessage(f"{file_ref} is a directory"),
+                exit_code=ExitCode(2),
+            )
+        try:
+            result = _run_one(path, options)
+        except UnicodeDecodeError:
+            return CliFailure(
+                message=ErrorMessage(f"could not decode {path} as UTF-8."),
+                exit_code=ExitCode(1),
+            )
+        except PdfIngestError as exc:
+            return CliFailure(message=ErrorMessage(str(exc)), exit_code=ExitCode(1))
+        if isinstance(result, CliFailure):
+            if not multi:
+                return result
+            if options.verbose:
+                notices.append(_skip_heading_notice(file_ref, options.heading_path))
+            continue
+        successes.append((file_ref, result.body))
+    if not successes:
+        return CliFailure(
+            message=ErrorMessage(""),
+            exit_code=ExitCode(1),
+            notices=tuple(notices),
+        )
+    return CliSuccess(body=format_attributed(successes), notices=tuple(notices))
+
+
 def _expand_tex_inputs(
     lines: DocumentLines,
     *,
@@ -286,15 +365,24 @@ def run_argv(argv: Sequence[str] | None = None) -> CliResult:
     return run(converted)
 
 
+def _print_notices(notices: tuple[ErrorMessage, ...]) -> None:
+    for notice in notices:
+        print(notice, file=sys.stderr)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     converted = options_from_namespace(args)
     if isinstance(converted, CliFailure):
-        print(f"Error: {converted.message}", file=sys.stderr)
+        _print_notices(converted.notices)
+        if converted.message:
+            print(f"Error: {converted.message}", file=sys.stderr)
         raise SystemExit(converted.exit_code)
     result = run(converted)
+    _print_notices(result.notices)
     if isinstance(result, CliFailure):
-        print(f"Error: {result.message}", file=sys.stderr)
+        if result.message:
+            print(f"Error: {result.message}", file=sys.stderr)
         raise SystemExit(result.exit_code)
     write_output(result.body, converted.output_ref)

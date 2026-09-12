@@ -57,8 +57,6 @@ Scenario: Unreadable PDF
 
 ## Directory as target
 
-Differs today: 0.7.1 raises `IsADirectoryError` with a traceback.
-
 ```gherkin
 Scenario: Directory as target
   Given "." is a directory

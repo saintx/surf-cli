@@ -9,8 +9,15 @@ import pytest
 from pypdf import PageObject
 
 from surf import __version__
-from surf.models import CliFailure, CliSuccess
-from surf.orchestrator import build_parser, main, run_argv
+from surf.models import (
+    CliFailure,
+    CliOptions,
+    CliSuccess,
+    FileRef,
+    HeadingPath,
+    HeadingText,
+)
+from surf.orchestrator import build_parser, main, options_from_namespace, run_argv
 from surf.test_adapters import write_outline_pdf
 
 SAMPLE = """---
@@ -186,9 +193,11 @@ def test_output_to_file(sample_file: Path, tmp_path: Path, monkeypatch: pytest.M
 
 
 def test_parser_positional() -> None:
-    args = build_parser().parse_args(["file.md", "My Heading"])
-    assert args.target == "file.md"
-    assert args.heading == "My Heading"
+    converted = options_from_namespace(build_parser().parse_args(["file.md", "My Heading"]))
+    assert isinstance(converted, CliOptions)
+    assert converted.file_refs == (FileRef("file.md"),)
+    assert converted.heading_path == HeadingPath(segments=(HeadingText("My Heading"),))
+    assert converted.verbose is False
 
 
 def test_tex_list_headings(tex_file: Path) -> None:
@@ -778,3 +787,175 @@ def test_pdf_level_7_matches_native_outline(tmp_path: Path) -> None:
     result = run_argv(["--level", "1", str(path), "Deep"])
     assert isinstance(result, CliFailure)
     assert result.exit_code == 1
+
+
+def test_section_flag_names_the_heading(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: multiple-files#Section flag names the heading"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("## Overview\nA text.\n")
+    (tmp_path / "b.md").write_text("## Overview\nB text.\n")
+    output = rendered(["-s", "Overview", "a.md", "b.md"])
+    assert output == ("==> a.md <==\n## Overview\nA text.\n\n==> b.md <==\n## Overview\nB text.")
+
+
+def test_single_file_prints_no_header(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: multiple-files#Single file prints no header"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("## Overview\nA text.\n")
+    assert rendered(["-s", "Overview", "a.md"]) == rendered(["a.md", "Overview"])
+
+
+def test_frontmatter_across_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: multiple-files#Frontmatter across files"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("---\ntitle: A\n---\n")
+    (tmp_path / "b.md").write_text("---\ntitle: B\n---\n")
+    output = rendered(["-f", "a.md", "b.md"])
+    assert output == "==> a.md <==\n---\ntitle: A\n---\n\n==> b.md <==\n---\ntitle: B\n---"
+
+
+def test_files_that_lack_the_address_are_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """spec: multiple-files#Files that lack the address are skipped"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("## Overview\nA text.\n")
+    (tmp_path / "c.md").write_text("## Other\n")
+    expected = run_argv(["a.md", "Overview"])
+    assert isinstance(expected, CliSuccess)
+    monkeypatch.setattr("sys.argv", ["surf", "-s", "Overview", "a.md", "c.md", "-v"])
+    main()
+    captured = capsys.readouterr()
+    assert captured.out == expected.body + "\n"
+    assert captured.err == 'c.md: heading "Overview" not found, skipped\n'
+
+
+def test_nothing_matched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """spec: multiple-files#Nothing matched"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "c.md").write_text("## Other\n")
+    (tmp_path / "d.md").write_text("## Other\n")
+    monkeypatch.setattr("sys.argv", ["surf", "-s", "Overview", "c.md", "d.md"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_per_file_flags_apply_to_each_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: multiple-files#Per-file flags apply to each file"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("# A\n## A2\n### A3\n")
+    (tmp_path / "b.md").write_text("# B\n## B2\n### B3\n")
+    output = rendered(["--list", "--level", "2", "a.md", "b.md"])
+    assert output == "==> a.md <==\n- A\n  - A2\n\n==> b.md <==\n- B\n  - B2"
+
+
+def test_extra_arguments_without_a_multi_file_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """spec: multiple-files#Extra arguments without a multi-file flag"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("# A\n")
+    (tmp_path / "b.md").write_text("# B\n")
+    (tmp_path / "c.md").write_text("# C\n")
+    monkeypatch.setattr("sys.argv", ["surf", "a.md", "b.md", "c.md"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err == (
+        "Error: extra arguments; use -f, --list, -s/--section, or --where "
+        "to address many files.\n"
+    )
+
+
+def test_directory_as_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """spec: errors-and-exit-codes#Directory as target"""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.argv", ["surf", "."])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err == "Error: . is a directory\n"
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
+
+
+def test_two_positionals_remain_single_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "about.md").write_text("# Hi\n")
+    (tmp_path / "usage.md").write_text("# Usage\n")
+    result = run_argv(["about.md", "usage.md"])
+    assert isinstance(result, CliFailure)
+    assert result.exit_code == 1
+    assert result.message == 'heading "usage.md" not found in about.md.'
+
+
+def test_frontmatter_only_wikilink_one_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("---\ntitle: A\n---\n")
+    assert rendered(["-f", "[[a.md]]"]) == "---\ntitle: A\n---"
+
+
+def test_parser_section_multi_file() -> None:
+    converted = options_from_namespace(build_parser().parse_args(["-s", "Foo#Baz", "a.md", "b.md"]))
+    assert isinstance(converted, CliOptions)
+    assert converted.file_refs == (FileRef("a.md"), FileRef("b.md"))
+    assert converted.heading_path == HeadingPath(segments=(HeadingText("Foo"), HeadingText("Baz")))
+
+
+def test_section_cannot_combine_with_list_or_frontmatter() -> None:
+    listed = run_argv(["-s", "Overview", "--list", "a.md"])
+    assert isinstance(listed, CliFailure)
+    assert listed.exit_code == 2
+    assert listed.message == "-s/--section cannot combine with --list or -f."
+    frontmatter = run_argv(["-s", "Overview", "-f", "a.md"])
+    assert isinstance(frontmatter, CliFailure)
+    assert frontmatter.exit_code == 2
+    assert frontmatter.message == listed.message
+
+
+def test_pdf_ingest_abort_discards_prior_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("## Overview\nA text.\n")
+    (tmp_path / "bad.pdf").write_bytes(b"%PDF-1.4 truncated")
+    monkeypatch.setattr("sys.argv", ["surf", "-s", "Overview", "a.md", "bad.pdf"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "==>" not in captured.out
+    assert captured.err.startswith("Error:")
+    assert "Traceback" not in captured.err
+    assert "could not read PDF" in captured.err
+
+
+def test_utf8_ingest_abort_discards_prior_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.md").write_text("---\ntitle: A\n---\n")
+    (tmp_path / "undecodable.bin").write_bytes(b"\xff\xfe")
+    monkeypatch.setattr("sys.argv", ["surf", "-f", "a.md", "undecodable.bin"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "==>" not in captured.out
+    assert captured.err == "Error: could not decode undecodable.bin as UTF-8.\n"
