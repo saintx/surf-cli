@@ -1233,3 +1233,98 @@ def test_parser_where_clauses() -> None:
         WhereClause(key_path=("metadata", "family"), expected="skill-authoring"),
         WhereClause(key_path=("kind",), expected="note"),
     )
+
+
+def test_reversed_positionals_name_a_missing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """spec: command-line#Reversed positionals name a missing file"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "file.md").write_text("## My Heading\nbody\n")
+    monkeypatch.setattr("sys.argv", ["surf", "My Heading", "file.md"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err == "Error: File not found: My Heading\n"
+
+
+def test_no_target(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """spec: errors-and-exit-codes#No target"""
+    monkeypatch.setattr("sys.argv", ["surf"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.err == "Error: no target specified. Use surf --help for usage.\n"
+
+
+def test_full_map_is_the_map(tmp_path: Path) -> None:
+    """spec: file-map#Full map is the map"""
+    path = tmp_path / "about.md"
+    path.write_text("# Title\n\nProgressive context disclosure lives in the body.\n")
+    assert rendered(["--full", str(path)]) == rendered([str(path)])
+    assert "Progressive context disclosure" not in rendered(["--full", str(path)])
+
+
+def test_frontmatter_of_a_file_without_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """spec: frontmatter-only#Frontmatter of a file without YAML"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "noyaml.md").write_text("# T\n")
+    monkeypatch.setattr("sys.argv", ["surf", "-f", "noyaml.md"])
+    main()
+    captured = capsys.readouterr()
+    assert captured.out == "\n"
+    assert captured.err == ""
+
+
+def test_wikilink_without_a_heading_is_the_map(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """spec: link-targets#Wikilink without a heading is the map"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "about.md").write_text("---\ntitle: About\n---\n# Surf\n\nbody\n")
+    assert rendered(["[[about]]"]) == rendered(["about.md"])
+
+
+def test_markdown_link_with_a_heading_extracts_that_section(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """spec: link-targets#Markdown link with a heading extracts that section"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "about.md").write_text("# Surf\n\n## Overview\n\nThe overview.\n")
+    output = rendered(["[text](about.md#Overview)"])
+    assert output.startswith("## Overview")
+
+
+def test_frontmatter_then_the_section(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """spec: section-extraction#Frontmatter then the section"""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "guide.md").write_text("---\ntitle: Guide\ntags: [cli, docs]\n---\n## Install\npip\n")
+    output = rendered(["guide.md", "Install", "--full"])
+    assert output.startswith("---\ntitle: Guide\ntags: [cli, docs]\n---\n## Install")
+
+
+def test_last_section_carries_the_document_end(tmp_path: Path) -> None:
+    """spec: tex-addressing#Last section carries the document end"""
+    (tmp_path / "part.tex").write_text("\\section{From Part}\npart body\n")
+    (tmp_path / "main.tex").write_text("\\input{part}\n\\end{document}\n")
+    output = rendered([str(tmp_path / "main.tex"), "From Part"])
+    assert output.endswith(r"\end{document}")
+
+
+def test_indented_code_and_bold_labels_are_not_headings(tmp_path: Path) -> None:
+    """spec: what-counts-as-a-heading#Indented code and bold labels are not headings"""
+    path = tmp_path / "ind.md"
+    path.write_text("# T\n\n    # not a heading\n\n**Bold:** not a heading\n\n## Real\n")
+    assert rendered(["--list", str(path)]) == "- T\n  - Real"
+
+
+def test_any_utf8_file_is_addressed_as_markdown(tmp_path: Path) -> None:
+    """spec: what-counts-as-a-heading#Any UTF-8 file is addressed as markdown"""
+    path = tmp_path / "notes.txt"
+    path.write_text("# Notes\n\n## Real\n")
+    assert rendered(["--list", str(path)]) == "- Notes\n  - Real"
+
