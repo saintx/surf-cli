@@ -127,7 +127,7 @@ class ExtractedOutline:
 
 @dataclass(frozen=True, slots=True)
 class CliOptions:
-    file_ref: FileRef | None
+    file_refs: tuple[FileRef, ...]
     heading_path: HeadingPath | None
     list_headings: bool
     frontmatter_only: bool
@@ -135,14 +135,17 @@ class CliOptions:
     no_heading: bool
     level_filter: int | None
     output_ref: FileRef | None
+    verbose: bool
 
 
 @dataclass(frozen=True, slots=True)
 class CliSuccess:
     body: RenderedBody
+    notices: tuple[ErrorMessage, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class CliFailure:
     message: ErrorMessage
     exit_code: ExitCode
+    notices: tuple[ErrorMessage, ...] = ()

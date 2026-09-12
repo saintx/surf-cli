@@ -104,6 +104,13 @@ def test_resolve_missing() -> None:
         resolve_file(FileRef("/nonexistent/path/file.md"))
 
 
+def test_resolve_directory_raises(tmp_path: Path) -> None:
+    file_ref = FileRef(str(tmp_path))
+    with pytest.raises(IsADirectoryError) as exc_info:
+        resolve_file(file_ref)
+    assert str(exc_info.value) == f"{file_ref} is a directory"
+
+
 def test_read_document(tmp_path: Path) -> None:
     path = tmp_path / "a.md"
     path.write_text("# A\n\nbody\n")

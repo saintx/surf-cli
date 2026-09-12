@@ -13,6 +13,7 @@ from surf.models import (
     CliTarget,
     ClosedSpan,
     Delimiter,
+    ErrorMessage,
     ExtractedOutline,
     ExtractedSection,
     FileRef,
@@ -590,3 +591,14 @@ def format_file_index(
     if frontmatter and heading_list:
         return RenderedBody(f"{frontmatter}\n\n{heading_list}")
     return RenderedBody(frontmatter or heading_list)
+
+
+def format_attributed(parts: Sequence[tuple[FileRef, RenderedBody]]) -> RenderedBody:
+    if len(parts) == 1:
+        return parts[0][1]
+    blocks = [f"==> {path} <==\n{body}" for path, body in parts]
+    return RenderedBody("\n\n".join(blocks))
+
+
+def format_skip_heading(path: FileRef, heading: HeadingText) -> ErrorMessage:
+    return ErrorMessage(f'{path}: heading "{heading}" not found, skipped')

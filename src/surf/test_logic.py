@@ -9,11 +9,13 @@ from surf.logic import (
     exclusive_page_end,
     extract_outline_section,
     extract_section,
+    format_attributed,
     format_empty_index,
     format_empty_pdf_index,
     format_file_index,
     format_heading_list,
     format_outline_list,
+    format_skip_heading,
     match_outline_span,
     parse_heading_path,
     parse_headings,
@@ -36,6 +38,7 @@ from surf.models import (
     PageIndex,
     ParsedLink,
     PdfDocument,
+    RenderedBody,
 )
 
 SAMPLE_MD = textwrap.dedent("""\
@@ -624,3 +627,23 @@ def test_closing_fence_must_match_char_and_length() -> None:
     lines = ["# Top", "````", "~~~~", "```", "## Inside", "````", "## Outside"]
     headings = parse_headings(lines)
     assert [str(record.text) for record in headings] == ["Top", "Outside"]
+
+
+def test_format_attributed_one_file_is_bare() -> None:
+    body = RenderedBody("## Overview\nA text.")
+    assert format_attributed(((FileRef("a.md"), body),)) == body
+
+
+def test_format_attributed_two_files_use_headers() -> None:
+    body_a = RenderedBody("## Overview\nA text.")
+    body_b = RenderedBody("## Overview\nB text.")
+    assert format_attributed(((FileRef("a.md"), body_a), (FileRef("b.md"), body_b))) == (
+        "==> a.md <==\n## Overview\nA text.\n\n==> b.md <==\n## Overview\nB text."
+    )
+
+
+def test_format_skip_heading() -> None:
+    assert (
+        format_skip_heading(FileRef("c.md"), HeadingText("Overview"))
+        == 'c.md: heading "Overview" not found, skipped'
+    )

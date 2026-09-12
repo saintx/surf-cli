@@ -135,16 +135,18 @@ Scenario: Nothing matched
   And the exit status is 1
 ```
 
-## Section flag and positional heading conflict
+## Extra arguments without a multi-file flag
 
 ```gherkin
-Scenario: Section flag and positional heading conflict
-  Given a file "a.md" with a section "## Overview"
-  When I run "surf -s Overview a.md Overview"
-  # ASSUMPTION: the usage message reads "Error: -s and a positional heading cannot both be given."
-  Then stderr is "Error: -s and a positional heading cannot both be given."
+Scenario: Extra arguments without a multi-file flag
+  Given a file "a.md"
+  And a file "b.md"
+  And a file "c.md"
+  When I run "surf a.md b.md c.md"
+  Then stderr is "Error: extra arguments; use -f, --list, -s/--section, or --where to address many files."
   And the exit status is 2
 ```
+
 
 ## Per-file flags apply to each file
 
