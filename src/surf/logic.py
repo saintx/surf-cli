@@ -611,6 +611,20 @@ def format_skip_heading(path: FileRef, heading: HeadingText) -> ErrorMessage:
     return ErrorMessage(f'{path}: heading "{heading}" not found, skipped')
 
 
+def format_skip_parse(path: FileRef, reason: FrontmatterReject) -> ErrorMessage:
+    return ErrorMessage(f"{path}: frontmatter not parsed ({reason}), skipped")
+
+
+def parse_where_token(raw: str) -> WhereClause | None:
+    if "=" not in raw:
+        return None
+    key, expected = raw.split("=", 1)
+    segments = key.split(".")
+    if any(not segment for segment in segments):
+        return None
+    return WhereClause(key_path=tuple(segments), expected=expected)
+
+
 _INTEGER_RE = re.compile(r"-?(0|[1-9][0-9]*)\Z")
 _VALUE_START = frozenset(" \t#[]{}'\"|>&*")
 
