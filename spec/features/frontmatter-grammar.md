@@ -1,11 +1,11 @@
 ---
 feature: Frontmatter grammar
-status: proposed
-target: "0.8.0"
+status: shipped
+verified-against: "0.8.0"
 ---
 # Frontmatter grammar
 
-Proposed for 0.8.0. For `--where`, surf parses a block-style YAML subset with no runtime dependency. The "Supported" scenarios are parser-conformance checks run only in development, against PyYAML; the "Rejected" scenarios are observable at the command line.
+For `--where`, surf parses a block-style YAML subset with no runtime dependency. The "Supported" scenarios are parser-conformance checks run only in development, against PyYAML; the "Rejected" scenarios are observable at the command line.
 
 ```gherkin
 Feature: Frontmatter grammar

@@ -1,11 +1,11 @@
 ---
 feature: Filter by frontmatter
-status: proposed
-target: "0.8.0"
+status: shipped
+verified-against: "0.8.0"
 ---
 # Filter by frontmatter
 
-Proposed for 0.8.0. `--where KEY=VALUE` keeps files whose parsed frontmatter block matches. Repeatable and conjunctive. With no other mode flag, prints matching paths. `-v` names each skipped file on stderr.
+`--where KEY=VALUE` keeps files whose parsed frontmatter block matches. Repeatable and conjunctive. With no other mode flag, prints matching paths. `-v` names each skipped file on stderr.
 
 ```gherkin
 Feature: Filter by frontmatter

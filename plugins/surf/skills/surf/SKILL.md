@@ -8,7 +8,7 @@ metadata:
     github_username: saintx
     email: alex@saintx.us
     twitter: alexsaintx
-  surf-version: "0.7.1"
+  surf-version: "0.8.0"
 ---
 
 # Surf: Progressive Context Disclosure
@@ -40,6 +40,7 @@ Resolve with `surf` against the section heading; do not bulk-ingest a whole refe
 | Wikilink and link input | `surf references/usage.md "Wikilink and link input"` |
 | Batch scanning | `surf references/usage.md "Batch scanning"` |
 | Platform aggregation (batch section extraction) | `surf references/usage.md "Platform aggregation (batch section extraction)"` |
+| Filter by frontmatter | `surf references/usage.md "Filter by frontmatter"` |
 | Additional options | `surf references/usage.md "Additional options"` |
 
 ### TeX and PDF
