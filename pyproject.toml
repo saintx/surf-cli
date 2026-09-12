@@ -37,6 +37,7 @@ dev = [
     "isort>=6.0.1",
     "pyright>=1.1.407",
     "pytest>=9.1.1",
+    "pyyaml>=6",
 ]
 
 [tool.uv]
@@ -83,5 +84,12 @@ type = "forbidden"
 name = "Models, logic, and orchestrator cannot import pypdf"
 source_modules = ["surf.models", "surf.logic", "surf.orchestrator"]
 forbidden_modules = ["pypdf"]
+type = "forbidden"
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Models, logic, and orchestrator cannot import yaml"
+source_modules = ["surf.models", "surf.logic", "surf.orchestrator"]
+forbidden_modules = ["yaml"]
 type = "forbidden"
 allow_indirect_imports = true
